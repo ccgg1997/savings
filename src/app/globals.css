@@ -74,14 +74,18 @@
 
 html {
   min-width: 320px;
+  width: 100%;
   max-width: 100%;
+  overflow-x: hidden;
   overflow-x: clip;
   background: var(--background);
 }
 
 body {
   margin: 0;
+  width: 100%;
   max-width: 100%;
+  overflow-x: hidden;
   overflow-x: clip;
   background: var(--background);
   color: var(--foreground);
@@ -129,6 +133,15 @@ select:focus-visible {
 .scrollbar-subtle {
   scrollbar-color: color-mix(in oklch, var(--muted-foreground) 30%, transparent) transparent;
   scrollbar-width: thin;
+}
+
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
 }
 
 .alertify-notifier .ajs-message {

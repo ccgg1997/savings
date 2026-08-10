@@ -19,7 +19,18 @@ export default async function MovementsPage({ searchParams }: { searchParams: Pr
     data = await getTransactionsData();
   } catch (error) {
     await recordError(error, { source: "movements_page", path: "/movimientos", userId: session.user.id });
-    data = { source: "demo", transactions: [], categories: [], divisions: [], updatedAt: new Date().toISOString() };
+    data = {
+      source: "demo",
+      transactions: [],
+      accounts: [],
+      categories: [],
+      divisions: [],
+      formOptions: {
+        income: { accounts: [], categories: [], divisions: [] },
+        expense: { accounts: [], categories: [], divisions: [] },
+      },
+      updatedAt: new Date().toISOString(),
+    };
   }
   const settings = await getAppSettings();
   return <AppShell session={session} settings={settings}><MovementsView initialData={data} initialDivision={division} initialCategory={category} initialType={initialType} /></AppShell>;

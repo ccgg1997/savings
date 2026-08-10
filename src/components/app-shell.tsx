@@ -56,7 +56,7 @@ export function AppShell({ children, session, settings }: { children: React.Reac
   const userInitial = (session.user.name ?? session.user.email ?? "U").slice(0, 1).toUpperCase();
 
   return (
-    <div className="min-h-dvh bg-background" data-accent={settings.accent.toLowerCase()}>
+    <div className="min-h-dvh min-w-0 overflow-x-hidden bg-background" data-accent={settings.accent.toLowerCase()}>
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col overflow-hidden bg-surface-dark text-surface-dark-foreground lg:flex">
         <div className="finance-grid pointer-events-none absolute inset-0 opacity-35" />
         <div className="pointer-events-none absolute -left-24 top-1/3 size-64 rounded-full bg-primary/15 blur-3xl" />
@@ -192,8 +192,8 @@ export function AppShell({ children, session, settings }: { children: React.Reac
         )}
       </header>
 
-      <div className="lg:pl-64">
-        <main className="mx-auto min-h-dvh max-w-[1600px] px-4 py-5 sm:px-6 sm:py-7 lg:px-8 lg:py-8 xl:px-10">{children}</main>
+      <div className="min-w-0 lg:pl-64">
+        <main className="mx-auto min-h-dvh min-w-0 max-w-[1600px] px-4 py-5 sm:px-6 sm:py-7 lg:px-8 lg:py-8 xl:px-10">{children}</main>
       </div>
     </div>
   );

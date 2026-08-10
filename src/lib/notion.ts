@@ -3,7 +3,13 @@ import { AppError } from "@/lib/errors";
 
 type NotionProperty = Record<string, unknown>;
 type NotionRow = { id: string; properties: Record<string, NotionProperty>; created_time: string };
-type DatabaseProperty = { id: string; type: string };
+type DatabaseProperty = {
+  id: string;
+  type: string;
+  select?: { options?: Array<{ name?: string }> };
+  status?: { options?: Array<{ name?: string }> };
+  multi_select?: { options?: Array<{ name?: string }> };
+};
 type DatabaseSchema = Record<string, DatabaseProperty>;
 
 export type TransactionType = "income" | "expense";
@@ -21,11 +27,19 @@ export type TransactionRecord = {
 
 export type TransactionInput = Omit<TransactionRecord, "id">;
 
+export type TransactionFormOptions = {
+  accounts: string[];
+  categories: string[];
+  divisions: string[];
+};
+
 export type TransactionsData = {
   source: "notion" | "demo";
   transactions: TransactionRecord[];
+  accounts: string[];
   categories: string[];
   divisions: string[];
+  formOptions: Record<TransactionType, TransactionFormOptions>;
   updatedAt: string;
 };
 
@@ -191,17 +205,56 @@ async function loadTransactions(): Promise<{ source: "notion" | "demo"; items: T
   };
 }
 
-function uniqueValues(items: TransactionRecord[], field: "category" | "division") {
+function uniqueValues(items: TransactionRecord[], field: "account" | "category" | "division") {
   return [...new Set(items.map((item) => item[field]).filter(Boolean))].sort((a, b) => a.localeCompare(b, "es"));
+}
+
+function schemaOptionValues(schema: DatabaseSchema, names: string[]) {
+  const wanted = names.map(normalized);
+  const matches = Object.entries(schema).filter(([name]) => wanted.includes(normalized(name)));
+  const property = matches.find(([, candidate]) => ["select", "status", "multi_select"].includes(candidate.type))?.[1] ?? matches[0]?.[1];
+  if (!property) return [];
+  const options = property.type === "select"
+    ? property.select?.options
+    : property.type === "status"
+      ? property.status?.options
+      : property.type === "multi_select"
+        ? property.multi_select?.options
+        : [];
+  return (options ?? []).map((option) => option.name?.trim()).filter((value): value is string => Boolean(value));
+}
+
+function mergeOptions(...groups: string[][]) {
+  return [...new Set(groups.flat().filter(Boolean))].sort((a, b) => a.localeCompare(b, "es"));
+}
+
+function formOptionsFor(type: TransactionType, items: TransactionRecord[], schema?: DatabaseSchema): TransactionFormOptions {
+  const records = items.filter((item) => item.type === type);
+  return {
+    accounts: mergeOptions(schema ? schemaOptionValues(schema, accountNames) : [], uniqueValues(records, "account")),
+    categories: mergeOptions(schema ? schemaOptionValues(schema, categoryNames) : [], uniqueValues(records, "category")),
+    divisions: mergeOptions(schema ? schemaOptionValues(schema, divisionNames) : [], uniqueValues(records, "division")),
+  };
 }
 
 export async function getTransactionsData(): Promise<TransactionsData> {
   const { source, items } = await loadTransactions();
+  const [incomeSchema, expenseSchema] = source === "notion"
+    ? await Promise.all([
+      databaseSchema(process.env.NOTION_DB_INGRESOS!),
+      databaseSchema(process.env.NOTION_DB_GASTOS!),
+    ])
+    : [undefined, undefined];
   return {
     source,
     transactions: items,
+    accounts: uniqueValues(items, "account"),
     categories: uniqueValues(items, "category"),
     divisions: uniqueValues(items, "division"),
+    formOptions: {
+      income: formOptionsFor("income", items, incomeSchema),
+      expense: formOptionsFor("expense", items, expenseSchema),
+    },
     updatedAt: new Date().toISOString(),
   };
 }
@@ -212,7 +265,7 @@ function grouped(items: Array<{ label: string; amount: number }>) {
   return [...map.entries()].sort((a, b) => b[1] - a[1]);
 }
 
-function buildExpenseDivisions(expenses: TransactionRecord[], totalExpenses: number): ExpenseDivision[] {
+function buildExpenseDivisions(expenses: TransactionRecord[], totalIncome: number): ExpenseDivision[] {
   const divisions = new Map<string, { amount: number; categories: Map<string, number> }>();
   expenses.forEach((item) => {
     const division = divisions.get(item.division) ?? { amount: 0, categories: new Map<string, number>() };
@@ -226,7 +279,7 @@ function buildExpenseDivisions(expenses: TransactionRecord[], totalExpenses: num
     .map(([label, value], index) => ({
       label,
       amount: value.amount,
-      percentage: totalExpenses ? (value.amount / totalExpenses) * 100 : 0,
+      percentage: totalIncome ? (value.amount / totalIncome) * 100 : 0,
       color: colors[index % colors.length],
       categories: [...value.categories.entries()]
         .sort((a, b) => b[1] - a[1])
@@ -275,7 +328,7 @@ function dashboardFromTransactions(source: "notion" | "demo", transactions: Tran
     period: new Intl.DateTimeFormat("es-CO", { month: "long", year: "numeric" }).format(referenceDate),
     metrics: { totalIncome, totalExpenses, savings, savingsRate: totalIncome ? (savings / totalIncome) * 100 : 0 },
     expenseCategories: categoryGroups.map(([label, amount], index) => ({ label, amount, percentage: totalExpenses ? (amount / totalExpenses) * 100 : 0, color: colors[index % colors.length] })),
-    expenseDivisions: buildExpenseDivisions(expenses, totalExpenses),
+    expenseDivisions: buildExpenseDivisions(expenses, totalIncome),
     incomeSources: sourceGroups.map(([label, amount]) => ({ label, amount, percentage: totalIncome ? (amount / totalIncome) * 100 : 0 })),
     monthlyTrend: trend.map(([key, value]) => ({ label: monthLabel(key), ...value })),
     recentTransactions: sortTransactions(transactions),

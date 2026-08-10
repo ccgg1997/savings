@@ -52,7 +52,10 @@ if (googleConfigured) {
       };
     },
     authorization: {
-      params: process.env.GOOGLE_DEFAULT_EMAIL ? { login_hint: process.env.GOOGLE_DEFAULT_EMAIL } : {},
+      // Always let the person choose which Google account to use. A login_hint
+      // tied the form to the administrator's domain and prevented other
+      // authorized users from selecting their registered account.
+      params: { prompt: "select_account" },
     },
   }));
 }
@@ -87,9 +90,14 @@ export const authOptions: NextAuthOptions = {
   },
   callbacks: {
     async signIn({ user, account, profile }) {
-      const email = user.email?.trim().toLowerCase();
+      const googleProfile = account?.provider === "google"
+        ? profile as { email?: string; email_verified?: boolean } | undefined
+        : undefined;
+      // For Google, validate the account selected on this sign-in instead of
+      // trusting an email from a previously linked database user.
+      const email = (googleProfile?.email ?? user.email)?.trim().toLowerCase();
       if (!email) return false;
-      if (account?.provider === "google" && (profile as { email_verified?: boolean } | undefined)?.email_verified === false) return false;
+      if (googleProfile?.email_verified === false) return false;
 
       try {
         const existing = await prisma.user.findUnique({ where: { email }, select: { id: true, role: true, status: true } });

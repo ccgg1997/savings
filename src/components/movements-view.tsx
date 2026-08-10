@@ -17,10 +17,11 @@ import {
   WalletCards,
   X,
 } from "lucide-react";
-import type { TransactionInput, TransactionRecord, TransactionsData, TransactionType } from "@/lib/notion";
+import type { TransactionFormOptions, TransactionInput, TransactionRecord, TransactionsData, TransactionType } from "@/lib/notion";
 import { apiFetch } from "@/lib/api";
 import { captureClientError, notifySuccess } from "@/lib/client-errors";
 import { useBodyScrollLock } from "@/lib/use-body-scroll-lock";
+import { TransactionDescriptionPopover } from "@/components/transaction-description-popover";
 
 const currency = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
 const today = () => new Date().toISOString().slice(0, 10);
@@ -55,7 +56,7 @@ function emptyDraft(type: TransactionType): TransactionDraft {
     amount: "",
     account: "",
     category: "",
-    division: type === "income" ? "Ingresos" : "",
+    division: "",
   };
 }
 
@@ -121,7 +122,7 @@ export function MovementsView({ initialData, initialDivision, initialCategory, i
   }
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       <header className="flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
         <div>
           <div className="mb-2 flex items-center gap-2">
@@ -144,14 +145,14 @@ export function MovementsView({ initialData, initialDivision, initialCategory, i
         <SummaryCard icon={CircleDollarSign} label="Balance" value={money(totals.balance)} helper="ingresos menos gastos" tone="featured" />
       </section>
 
-      <section className="overflow-hidden rounded-2xl border border-border/90 bg-card shadow-[0_10px_35px_rgba(25,48,40,0.045)]">
+      <section className="min-w-0 overflow-hidden rounded-2xl border border-border/90 bg-card shadow-[0_10px_35px_rgba(25,48,40,0.045)]">
         <div className="border-b border-border/80 p-4 sm:p-5">
           <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-end">
             <div>
               <h2 className="text-base font-bold tracking-tight text-card-foreground">Todos los movimientos</h2>
               <p className="mt-1 text-[11px] text-muted-foreground">Filtra por mes, división o categoría.</p>
             </div>
-            <div className="grid flex-1 grid-cols-2 gap-2 xl:max-w-5xl xl:grid-cols-[1.2fr_0.9fr_1fr_1fr_auto]">
+            <div className="grid min-w-0 flex-1 grid-cols-2 gap-2 xl:max-w-5xl xl:grid-cols-[1.2fr_0.9fr_1fr_1fr_auto]">
               <label className="relative col-span-2 block xl:col-span-1">
                 <span className="sr-only">Buscar movimientos</span>
                 <Search className="pointer-events-none absolute left-3 top-3 size-4 text-muted-foreground" aria-hidden="true" />
@@ -174,7 +175,7 @@ export function MovementsView({ initialData, initialDivision, initialCategory, i
         <MovementList rows={filtered} writable={writable} onEdit={(transaction) => setEditor({ mode: "edit", transaction })} onDelete={setDeleting} />
       </section>
 
-      {editor ? <TransactionEditor state={editor} categories={categories} divisions={divisions} writable={writable} onClose={() => setEditor(null)} onSaved={handleSaved} /> : null}
+      {editor ? <TransactionEditor state={editor} formOptions={initialData.formOptions} writable={writable} onClose={() => setEditor(null)} onSaved={handleSaved} /> : null}
       {deleting ? <DeleteTransactionDialog transaction={deleting} onClose={() => setDeleting(null)} onDeleted={handleDeleted} /> : null}
     </div>
   );
@@ -208,10 +209,33 @@ function MovementList({ rows, writable, onEdit, onDelete }: { rows: TransactionR
   if (!rows.length) return <div className="p-10 text-center"><span className="mx-auto flex size-12 items-center justify-center rounded-2xl bg-muted text-muted-foreground"><Search className="size-5" aria-hidden="true" /></span><p className="mt-3 text-sm font-bold text-card-foreground">No encontramos movimientos</p><p className="mt-1 text-xs text-muted-foreground">Prueba otra combinación de mes, división y categoría.</p></div>;
   return (
     <div className="border-t border-border/70">
-      <div className="flex items-center justify-between px-4 py-2 text-[9px] font-semibold text-muted-foreground sm:hidden">
-        <span>Tabla completa</span><span>Desliza horizontalmente →</span>
+      <div className="divide-y divide-border/70 md:hidden" aria-label="Lista de movimientos">
+        {rows.map((row) => (
+          <article key={row.id} className="p-4">
+            <div className="flex min-w-0 items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-bold text-card-foreground">{row.description}</p>
+                <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-1.5">
+                  <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold ${row.type === "income" ? "bg-emerald-50 text-emerald-700" : "bg-orange-50 text-orange-700"}`}>{row.type === "income" ? "Ingreso" : "Gasto"}</span>
+                  <span className="max-w-[125px] truncate rounded-full bg-secondary px-2 py-0.5 text-[9px] font-bold text-secondary-foreground">{row.category}</span>
+                </div>
+              </div>
+              <p className={`shrink-0 whitespace-nowrap text-sm font-bold tabular-nums ${row.type === "income" ? "text-emerald-700" : "text-card-foreground"}`}>{row.type === "income" ? "+" : "−"}{money(row.amount)}</p>
+            </div>
+            <div className="mt-3 flex min-w-0 items-end justify-between gap-3">
+              <dl className="grid min-w-0 flex-1 grid-cols-2 gap-3 text-[10px]">
+                <div className="min-w-0"><dt className="font-semibold text-muted-foreground">División</dt><dd className="mt-0.5 truncate font-bold text-card-foreground">{row.division}</dd></div>
+                <div className="min-w-0"><dt className="font-semibold text-muted-foreground">Cuenta · {formatShortDate(row.date)}</dt><dd className="mt-0.5 truncate font-bold text-card-foreground">{row.account}</dd></div>
+              </dl>
+              <div className="flex shrink-0 gap-1">
+                <button type="button" disabled={!writable} onClick={() => onEdit(row)} className="flex size-9 items-center justify-center rounded-lg border border-border text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:opacity-30" aria-label={`Editar ${row.description}`}><Pencil className="size-3.5" aria-hidden="true" /></button>
+                <button type="button" disabled={!writable} onClick={() => onDelete(row)} className="flex size-9 items-center justify-center rounded-lg border border-border text-muted-foreground transition hover:bg-red-50 hover:text-red-600 focus-visible:ring-2 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:opacity-30" aria-label={`Eliminar ${row.description}`}><Trash2 className="size-3.5" aria-hidden="true" /></button>
+              </div>
+            </div>
+          </article>
+        ))}
       </div>
-      <div className="scrollbar-subtle overflow-x-auto overscroll-x-contain" tabIndex={0} aria-label="Tabla completa de movimientos; desplázate horizontalmente para ver todas las columnas">
+      <div className="scrollbar-subtle hidden overflow-x-auto overscroll-x-contain md:block" tabIndex={0} aria-label="Tabla completa de movimientos; desplázate horizontalmente para ver todas las columnas">
         <table className="w-full min-w-[650px] text-left text-[11px]">
           <thead><tr className="border-b border-border bg-muted/45 text-[9px] font-bold uppercase tracking-[0.12em] text-muted-foreground"><th className="w-[190px] px-4 py-3 sm:px-5">Movimiento</th><th className="w-[130px] px-3 py-3 text-right">Monto</th><th className="w-[95px] px-3 py-3">Fecha</th><th className="w-[120px] px-3 py-3">Cuenta</th><th className="w-[105px] px-4 py-3 text-right sm:px-5">Acciones</th></tr></thead>
           <tbody>{rows.map((row) => <tr key={row.id} className="group border-b border-border/60 last:border-0 hover:bg-muted/25"><td className="px-4 py-3 sm:px-5"><MovementIdentity row={row} /></td><td className={`whitespace-nowrap px-3 py-3 text-right font-bold tabular-nums ${row.type === "income" ? "text-emerald-700" : "text-card-foreground"}`}>{row.type === "income" ? "+" : "−"}{money(row.amount)}</td><td className="whitespace-nowrap px-3 py-3 tabular-nums text-muted-foreground">{formatShortDate(row.date)}</td><td className="px-3 py-3"><span className="inline-flex max-w-[110px] truncate rounded-full border border-border bg-card px-2.5 py-1 font-semibold text-muted-foreground">{row.account}</span></td><td className="px-4 py-3 sm:px-5"><div className="flex justify-end gap-1"><button type="button" disabled={!writable} onClick={() => onEdit(row)} className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-background hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:opacity-30" title="Editar movimiento"><Pencil className="size-3.5" aria-hidden="true" /><span className="sr-only">Editar</span></button><button type="button" disabled={!writable} onClick={() => onDelete(row)} className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-red-50 hover:text-red-600 focus-visible:ring-2 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:opacity-30" title="Eliminar movimiento"><Trash2 className="size-3.5" aria-hidden="true" /><span className="sr-only">Eliminar</span></button></div></td></tr>)}</tbody>
@@ -222,14 +246,27 @@ function MovementList({ rows, writable, onEdit, onDelete }: { rows: TransactionR
 }
 
 function MovementIdentity({ row }: { row: TransactionRecord }) {
-  return <div className="min-w-0"><p className="truncate font-bold text-card-foreground">{row.category}</p><div className="mt-1 flex min-w-0 items-center gap-1.5"><span className="shrink-0 text-[9px] font-semibold text-muted-foreground">{row.type === "income" ? "Ingreso" : "Gasto"}</span><span className="max-w-[105px] truncate rounded-full bg-secondary px-1.5 py-0.5 text-[8px] font-bold text-secondary-foreground">{row.division}</span></div></div>;
+  return <div className="min-w-0"><div className="flex min-w-0 items-center gap-1.5"><p className="truncate font-bold text-card-foreground">{row.category}</p><TransactionDescriptionPopover description={row.description} /></div><div className="mt-1 flex min-w-0 items-center gap-1.5"><span className="shrink-0 text-[9px] font-semibold text-muted-foreground">{row.type === "income" ? "Ingreso" : "Gasto"}</span><span className="max-w-[105px] truncate rounded-full bg-secondary px-1.5 py-0.5 text-[8px] font-bold text-secondary-foreground">{row.division}</span></div></div>;
 }
 
-function TransactionEditor({ state, categories, divisions, writable, onClose, onSaved }: { state: EditorState; categories: string[]; divisions: string[]; writable: boolean; onClose: () => void; onSaved: (transaction: TransactionRecord) => void }) {
+function TransactionEditor({ state, formOptions, writable, onClose, onSaved }: { state: EditorState; formOptions: Record<TransactionType, TransactionFormOptions>; writable: boolean; onClose: () => void; onSaved: (transaction: TransactionRecord) => void }) {
   const existing = state.mode === "edit" ? state.transaction : null;
   const [draft, setDraft] = useState<TransactionDraft>(state.mode === "edit" ? draftFromTransaction(state.transaction) : emptyDraft(state.type));
   const [saving, setSaving] = useState(false);
+  const activeOptions = formOptions[draft.type];
+  const optionsReady = activeOptions.accounts.length > 0 && activeOptions.categories.length > 0 && activeOptions.divisions.length > 0;
   useBodyScrollLock(true);
+
+  function changeType(nextType: TransactionType) {
+    const nextOptions = formOptions[nextType];
+    setDraft((current) => ({
+      ...emptyDraft(nextType),
+      description: current.description,
+      amount: current.amount,
+      date: current.date,
+      account: nextOptions.accounts.includes(current.account) ? current.account : "",
+    }));
+  }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -250,7 +287,13 @@ function TransactionEditor({ state, categories, divisions, writable, onClose, on
   }
 
   const fieldClass = "h-11 w-full rounded-xl border border-input bg-background px-3 text-sm text-foreground transition placeholder:text-muted-foreground focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/20 disabled:cursor-not-allowed disabled:opacity-55";
-  return <div className="fixed inset-0 z-50 flex items-stretch overflow-hidden overscroll-none bg-slate-950/55 backdrop-blur-sm sm:items-center sm:justify-center sm:p-6" role="presentation"><section role="dialog" aria-modal="true" aria-labelledby="transaction-editor-title" className="flex h-[100dvh] w-full max-w-2xl flex-col overflow-hidden bg-card shadow-2xl sm:h-auto sm:max-h-[92dvh] sm:rounded-3xl sm:border sm:border-border"><div className="flex shrink-0 items-start justify-between gap-4 border-b border-border bg-card px-5 py-5 sm:px-6"><div><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-primary">Sincronización con Notion</p><h2 id="transaction-editor-title" className="mt-1 text-xl font-bold tracking-tight text-card-foreground">{existing ? "Editar movimiento" : draft.type === "income" ? "Nuevo ingreso" : "Nuevo gasto"}</h2></div><button type="button" onClick={onClose} disabled={saving} className="flex size-9 items-center justify-center rounded-xl text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:opacity-50"><X className="size-4" aria-hidden="true" /><span className="sr-only">Cerrar</span></button></div><form onSubmit={submit} className="scrollbar-subtle min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain p-5 sm:p-6"><fieldset disabled={Boolean(existing)}><legend className="text-xs font-bold text-card-foreground">Tipo de movimiento</legend><div className="mt-2 grid grid-cols-2 gap-2"><button type="button" onClick={() => setDraft((current) => ({ ...emptyDraft("income"), description: current.description, amount: current.amount, date: current.date, account: current.account }))} className={`flex h-11 items-center justify-center gap-2 rounded-xl border text-xs font-bold transition ${draft.type === "income" ? "border-emerald-300 bg-emerald-50 text-emerald-700" : "border-border text-muted-foreground hover:bg-muted"}`}><ArrowDownLeft className="size-4" aria-hidden="true" />Ingreso</button><button type="button" onClick={() => setDraft((current) => ({ ...emptyDraft("expense"), description: current.description, amount: current.amount, date: current.date, account: current.account }))} className={`flex h-11 items-center justify-center gap-2 rounded-xl border text-xs font-bold transition ${draft.type === "expense" ? "border-orange-300 bg-orange-50 text-orange-700" : "border-border text-muted-foreground hover:bg-muted"}`}><ArrowUpRight className="size-4" aria-hidden="true" />Gasto</button></div></fieldset><div className="grid gap-4 sm:grid-cols-2"><label className="space-y-1.5 sm:col-span-2"><span className="text-xs font-bold text-card-foreground">Descripción</span><input required minLength={2} maxLength={160} value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} className={fieldClass} placeholder="Ej. Mercado semanal" /></label><label className="space-y-1.5"><span className="text-xs font-bold text-card-foreground">Monto</span><input required type="number" min="1" step="any" inputMode="decimal" value={draft.amount} onChange={(event) => setDraft({ ...draft, amount: event.target.value })} className={fieldClass} placeholder="0" /></label><label className="space-y-1.5"><span className="text-xs font-bold text-card-foreground">Fecha</span><input required type="date" value={draft.date} onChange={(event) => setDraft({ ...draft, date: event.target.value })} className={fieldClass} /></label><label className="space-y-1.5"><span className="text-xs font-bold text-card-foreground">División</span><input required list="division-options" value={draft.division} onChange={(event) => setDraft({ ...draft, division: event.target.value })} className={fieldClass} placeholder="Ej. Hogar" /><datalist id="division-options">{divisions.map((value) => <option key={value} value={value} />)}</datalist></label><label className="space-y-1.5"><span className="text-xs font-bold text-card-foreground">Categoría</span><input required list="category-options" value={draft.category} onChange={(event) => setDraft({ ...draft, category: event.target.value })} className={fieldClass} placeholder="Ej. Alimentación" /><datalist id="category-options">{categories.map((value) => <option key={value} value={value} />)}</datalist></label><label className="space-y-1.5 sm:col-span-2"><span className="text-xs font-bold text-card-foreground">Cuenta</span><input required value={draft.account} onChange={(event) => setDraft({ ...draft, account: event.target.value })} className={fieldClass} placeholder="Ej. Bancolombia" /></label></div>{!writable ? <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">Conecta las bases de ingresos y gastos de Notion para guardar movimientos reales.</div> : <div className="flex items-start gap-2 rounded-xl bg-secondary p-3 text-[11px] leading-5 text-secondary-foreground"><CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden="true" />El movimiento se guardará directamente en la base de {draft.type === "income" ? "ingresos" : "gastos"} configurada en Notion.</div>}<div className="flex flex-col-reverse gap-2 border-t border-border pt-5 sm:flex-row sm:justify-end"><button type="button" onClick={onClose} disabled={saving} className="h-10 rounded-xl border border-border px-4 text-xs font-bold text-foreground transition hover:bg-muted disabled:opacity-50">Cancelar</button><button type="submit" disabled={saving || !writable} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-surface-dark px-5 text-xs font-bold text-surface-dark-foreground transition hover:bg-slate-800 disabled:pointer-events-none disabled:opacity-50">{saving ? <LoaderCircle className="size-4 animate-spin" aria-hidden="true" /> : null}{saving ? "Guardando…" : !writable ? "Notion no conectado" : existing ? "Guardar cambios" : "Agregar movimiento"}</button></div></form></section></div>;
+  const selectClass = `${fieldClass} appearance-none pr-9`;
+  return <div className="fixed inset-0 z-50 flex items-stretch overflow-hidden overscroll-none bg-slate-950/55 backdrop-blur-sm sm:items-center sm:justify-center sm:p-6" role="presentation"><section role="dialog" aria-modal="true" aria-labelledby="transaction-editor-title" className="flex h-[100dvh] w-full max-w-2xl flex-col overflow-hidden bg-card shadow-2xl sm:h-auto sm:max-h-[92dvh] sm:rounded-3xl sm:border sm:border-border"><div className="flex shrink-0 items-start justify-between gap-4 border-b border-border bg-card px-5 py-5 sm:px-6"><div><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-primary">Sincronización con Notion</p><h2 id="transaction-editor-title" className="mt-1 text-xl font-bold tracking-tight text-card-foreground">{existing ? "Editar movimiento" : draft.type === "income" ? "Nuevo ingreso" : "Nuevo gasto"}</h2></div><button type="button" onClick={onClose} disabled={saving} className="flex size-9 items-center justify-center rounded-xl text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:opacity-50"><X className="size-4" aria-hidden="true" /><span className="sr-only">Cerrar</span></button></div><form onSubmit={submit} className="scrollbar-subtle min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain p-5 sm:p-6"><fieldset disabled={Boolean(existing)}><legend className="text-xs font-bold text-card-foreground">Tipo de movimiento</legend><div className="mt-2 grid grid-cols-2 gap-2"><button type="button" onClick={() => changeType("income")} className={`flex h-11 items-center justify-center gap-2 rounded-xl border text-xs font-bold transition ${draft.type === "income" ? "border-emerald-300 bg-emerald-50 text-emerald-700" : "border-border text-muted-foreground hover:bg-muted"}`}><ArrowDownLeft className="size-4" aria-hidden="true" />Ingreso</button><button type="button" onClick={() => changeType("expense")} className={`flex h-11 items-center justify-center gap-2 rounded-xl border text-xs font-bold transition ${draft.type === "expense" ? "border-orange-300 bg-orange-50 text-orange-700" : "border-border text-muted-foreground hover:bg-muted"}`}><ArrowUpRight className="size-4" aria-hidden="true" />Gasto</button></div></fieldset><div className="grid gap-4 sm:grid-cols-2"><label className="space-y-1.5 sm:col-span-2"><span className="text-xs font-bold text-card-foreground">Descripción</span><input required minLength={2} maxLength={160} value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} className={fieldClass} placeholder="Ej. Mercado semanal" /></label><label className="space-y-1.5"><span className="text-xs font-bold text-card-foreground">Monto</span><input required type="number" min="1" step="any" inputMode="decimal" value={draft.amount} onChange={(event) => setDraft({ ...draft, amount: event.target.value })} className={fieldClass} placeholder="0" /></label><label className="space-y-1.5"><span className="text-xs font-bold text-card-foreground">Fecha</span><input required type="date" value={draft.date} onChange={(event) => setDraft({ ...draft, date: event.target.value })} className={fieldClass} /></label><NotionSelect label="División" value={draft.division} options={activeOptions.divisions} onChange={(value) => setDraft({ ...draft, division: value })} className={selectClass} /><NotionSelect label="Categoría" value={draft.category} options={activeOptions.categories} onChange={(value) => setDraft({ ...draft, category: value })} className={selectClass} /><NotionSelect label="Cuenta" value={draft.account} options={activeOptions.accounts} onChange={(value) => setDraft({ ...draft, account: value })} className={selectClass} fullWidth /></div>{!writable ? <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">Conecta las bases de ingresos y gastos de Notion para guardar movimientos reales.</div> : !optionsReady ? <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">Agrega opciones o registros para División, Categoría y Cuenta en la base de {draft.type === "income" ? "ingresos" : "gastos"} de Notion.</div> : <div className="flex items-start gap-2 rounded-xl bg-secondary p-3 text-[11px] leading-5 text-secondary-foreground"><CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden="true" />Las opciones se cargaron desde Notion. El movimiento se guardará en la base de {draft.type === "income" ? "ingresos" : "gastos"}.</div>}<div className="flex flex-col-reverse gap-2 border-t border-border pt-5 sm:flex-row sm:justify-end"><button type="button" onClick={onClose} disabled={saving} className="h-10 rounded-xl border border-border px-4 text-xs font-bold text-foreground transition hover:bg-muted disabled:opacity-50">Cancelar</button><button type="submit" disabled={saving || !writable || !optionsReady} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-surface-dark px-5 text-xs font-bold text-surface-dark-foreground transition hover:bg-slate-800 disabled:pointer-events-none disabled:opacity-50">{saving ? <LoaderCircle className="size-4 animate-spin" aria-hidden="true" /> : null}{saving ? "Guardando…" : !writable ? "Notion no conectado" : !optionsReady ? "Faltan opciones en Notion" : existing ? "Guardar cambios" : "Agregar movimiento"}</button></div></form></section></div>;
+}
+
+function NotionSelect({ label, value, options, onChange, className, fullWidth = false }: { label: string; value: string; options: string[]; onChange: (value: string) => void; className: string; fullWidth?: boolean }) {
+  const available = value && !options.includes(value) ? [value, ...options] : options;
+  return <label className={`relative space-y-1.5 ${fullWidth ? "sm:col-span-2" : ""}`}><span className="text-xs font-bold text-card-foreground">{label}</span><span className="relative block"><select required value={value} onChange={(event) => onChange(event.target.value)} disabled={available.length === 0} className={className}><option value="" disabled>{available.length ? `Selecciona ${label.toLocaleLowerCase("es")}` : `Sin opciones de ${label.toLocaleLowerCase("es")}`}</option>{available.map((option) => <option key={option} value={option}>{option}</option>)}</select><ChevronDown className="pointer-events-none absolute right-3 top-3.5 size-4 text-muted-foreground" aria-hidden="true" /></span></label>;
 }
 
 function DeleteTransactionDialog({ transaction, onClose, onDeleted }: { transaction: TransactionRecord; onClose: () => void; onDeleted: (id: string) => void }) {

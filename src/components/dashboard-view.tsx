@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useId, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CalendarDays,
+  ChevronLeft,
   ChevronRight,
   Clock3,
   Layers3,
@@ -13,7 +14,6 @@ import {
   RefreshCw,
   ShieldCheck,
   Target,
-  TrendingUp,
   Wallet,
   X,
 } from "lucide-react";
@@ -22,6 +22,7 @@ import type { AppSettingsData } from "@/lib/settings";
 import { apiFetch } from "@/lib/api";
 import { captureClientError, notifySuccess } from "@/lib/client-errors";
 import { useBodyScrollLock } from "@/lib/use-body-scroll-lock";
+import { TransactionDescriptionPopover } from "@/components/transaction-description-popover";
 
 const currency = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
 const compactCurrency = new Intl.NumberFormat("es-CO", { notation: "compact", maximumFractionDigits: 1 });
@@ -94,104 +95,32 @@ function Panel({ title, description, action, children, className = "" }: { title
   );
 }
 
-function CashFlowChart({ data }: { data: DashboardData["monthlyTrend"] }) {
-  const gradientId = useId().replace(/:/g, "");
-  const max = Math.max(...data.flatMap((item) => [item.income, item.expenses]), 1);
-  const width = 780;
-  const height = 290;
-  const left = 66;
-  const right = 758;
-  const top = 22;
-  const bottom = 238;
-  const chartHeight = bottom - top;
-  const groupWidth = (right - left) / Math.max(data.length, 1);
-  const barWidth = Math.min(22, groupWidth * 0.2);
-  const x = (index: number) => left + groupWidth * index + groupWidth / 2;
-  const y = (value: number) => bottom - (Math.max(value, 0) / max) * chartHeight;
-  const savings = data.map((item) => Math.max(item.income - item.expenses, 0));
-  const savingsPoints = savings.map((value, index) => `${x(index)},${y(value)}`).join(" ");
-  const areaPath = data.length ? `M ${x(0)} ${bottom} L ${savings.map((value, index) => `${x(index)} ${y(value)}`).join(" L ")} L ${x(data.length - 1)} ${bottom} Z` : "";
-
-  return (
-    <div className="px-3 pb-4 sm:px-5 sm:pb-5">
-      <div className="mb-2 flex flex-wrap items-center gap-x-5 gap-y-2 px-2 text-[10px] font-medium text-muted-foreground">
-        <Legend color="bg-emerald-500" label="Ingresos" />
-        <Legend color="bg-orange-400" label="Gastos" />
-        <Legend color="bg-primary" label="Ahorro neto" line />
-      </div>
-      <div className="h-64 w-full sm:h-72">
-        <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="size-full overflow-visible" role="img" aria-label="Comparación mensual de ingresos, gastos y ahorro">
-          <defs>
-            <linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.14" />
-              <stop offset="100%" stopColor="var(--primary)" stopOpacity="0" />
-            </linearGradient>
-          </defs>
-          {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
-            const lineY = bottom - chartHeight * ratio;
-            return (
-              <g key={ratio}>
-                <line x1={left} x2={right} y1={lineY} y2={lineY} stroke="currentColor" className="text-border/75" strokeDasharray="4 5" vectorEffect="non-scaling-stroke" />
-                <text x="4" y={lineY + 4} className="fill-muted-foreground text-[9px]">{compact(max * ratio)}</text>
-              </g>
-            );
-          })}
-
-          {areaPath ? <path d={areaPath} fill={`url(#${gradientId})`} /> : null}
-
-          {data.map((item, index) => (
-            <g key={`${item.label}-${index}`}>
-              <rect x={x(index) - barWidth - 2} y={y(item.income)} width={barWidth} height={bottom - y(item.income)} rx="5" className="fill-emerald-500/80">
-                <title>{`${item.label}: ingresos ${money(item.income)}`}</title>
-              </rect>
-              <rect x={x(index) + 2} y={y(item.expenses)} width={barWidth} height={bottom - y(item.expenses)} rx="5" className="fill-orange-400/80">
-                <title>{`${item.label}: gastos ${money(item.expenses)}`}</title>
-              </rect>
-              <text x={x(index)} y="270" textAnchor="middle" className="fill-muted-foreground text-[10px] font-semibold capitalize">{item.label}</text>
-            </g>
-          ))}
-
-          <polyline points={savingsPoints} fill="none" stroke="var(--primary)" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
-          {savings.map((value, index) => (
-            <circle key={`saving-${index}`} cx={x(index)} cy={y(value)} r="4" fill="var(--card)" stroke="var(--primary)" strokeWidth="2" vectorEffect="non-scaling-stroke">
-              <title>{`${data[index].label}: ahorro ${money(value)}`}</title>
-            </circle>
-          ))}
-        </svg>
-      </div>
-    </div>
-  );
-}
-
-function Legend({ color, label, line = false }: { color: string; label: string; line?: boolean }) {
-  return <span className="flex items-center gap-2"><span className={`${line ? "h-0.5 w-4 rounded-full" : "size-2 rounded-full"} ${color}`} />{label}</span>;
-}
-
-function ExpenseOverview({ divisions, expenses, budget, onSelect }: { divisions: DashboardData["expenseDivisions"]; expenses: number; budget: number | null; onSelect: (division: string) => void }) {
-  const main = divisions[0];
-  const budgetProgress = budget ? Math.min((expenses / budget) * 100, 100) : null;
-  const remaining = budget ? budget - expenses : null;
+function ExpenseOverview({ divisions, expenses, income, onSelect }: { divisions: DashboardData["expenseDivisions"]; expenses: number; income: number; onSelect: (division: string) => void }) {
+  const spentPercentage = income ? (expenses / income) * 100 : 0;
+  const available = income - expenses;
+  const availablePercentage = income ? (available / income) * 100 : 0;
 
   return (
     <div className="px-5 pb-5 sm:px-6 sm:pb-6">
       <div className="relative overflow-hidden rounded-2xl bg-surface-dark p-4 text-surface-dark-foreground">
         <div className="pointer-events-none absolute -right-12 -top-12 size-32 rounded-full bg-orange-400/15 blur-2xl" />
-        <div className="relative flex items-center justify-between gap-4">
+        <div className="relative flex items-start justify-between gap-4">
           <div>
-            <p className="text-[10px] font-semibold text-white/45">{budget ? "Presupuesto mensual" : "Principal división"}</p>
-            <p className="mt-1 text-lg font-bold tracking-tight">{budget ? money(budget) : main?.label ?? "Sin datos"}</p>
-            <p className={`mt-2 text-[10px] font-semibold ${remaining !== null && remaining < 0 ? "text-red-300" : "text-emerald-300"}`}>
-              {budget && remaining !== null ? `${remaining >= 0 ? money(remaining) : money(Math.abs(remaining))} ${remaining >= 0 ? "disponibles" : "por encima"}` : main ? `${main.percentage.toFixed(0)}% del gasto total` : "Aún no hay movimientos"}
-            </p>
+            <p className="text-[10px] font-semibold text-white/45">Ingresos del periodo</p>
+            <p className="mt-1 text-lg font-bold tracking-tight">{money(income)}</p>
           </div>
-          <div className="relative flex size-16 shrink-0 items-center justify-center rounded-full" style={{ background: `conic-gradient(var(--primary) ${budgetProgress ?? main?.percentage ?? 0}%, color-mix(in oklch, white 10%, transparent) 0)` }}>
-            <span className="flex size-12 items-center justify-center rounded-full bg-surface-dark text-xs font-bold">{Math.round(budgetProgress ?? main?.percentage ?? 0)}%</span>
+          <div className="relative flex size-16 shrink-0 items-center justify-center rounded-full" style={{ background: `conic-gradient(var(--primary) ${Math.min(spentPercentage, 100)}%, color-mix(in oklch, white 10%, transparent) 0)` }}>
+            <span className="flex size-12 items-center justify-center rounded-full bg-surface-dark text-xs font-bold">{Math.round(spentPercentage)}%</span>
           </div>
+        </div>
+        <div className="relative mt-4 flex items-end justify-between gap-3 border-t border-white/10 pt-3">
+          <p className="text-[9px] font-semibold text-white/45">Te has gastado</p>
+          <p className="text-sm font-bold">{money(expenses)}</p>
         </div>
       </div>
 
       <div className="mt-5 space-y-4">
-        {divisions.slice(0, 5).map((item) => (
+        {divisions.map((item) => (
           <button key={item.label} type="button" onClick={() => onSelect(item.label)} className="group block w-full rounded-xl text-left transition hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25">
             <div className="mb-1.5 flex items-center justify-between gap-3 text-[10px]">
               <span className="flex min-w-0 items-center gap-2 font-semibold text-card-foreground">
@@ -201,48 +130,112 @@ function ExpenseOverview({ divisions, expenses, budget, onSelect }: { divisions:
               <span className="flex shrink-0 items-center gap-1 font-bold text-card-foreground">{money(item.amount)} <span className="ml-1 font-medium text-muted-foreground">{Math.round(item.percentage)}%</span><ChevronRight className="size-3 text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden="true" /></span>
             </div>
             <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-              <span className="block h-full rounded-full transition-all" style={{ width: `${Math.max(item.percentage, 2)}%`, backgroundColor: item.color }} />
+              <span className="block h-full rounded-full transition-all" style={{ width: `${Math.min(Math.max(item.percentage, 2), 100)}%`, backgroundColor: item.color }} />
             </div>
           </button>
         ))}
         {divisions.length === 0 ? <p className="py-6 text-center text-xs text-muted-foreground">No hay divisiones para mostrar.</p> : null}
       </div>
+
+      <div className="mt-5 flex items-center justify-between gap-4 border-t border-border pt-4">
+        <div>
+          <p className="text-[10px] font-semibold text-muted-foreground">Disponible después de gastos</p>
+          <p className="mt-1 text-[9px] font-medium text-muted-foreground">{Math.round(availablePercentage)}% de tus ingresos</p>
+        </div>
+        <p className={`shrink-0 text-lg font-bold tracking-tight ${available < 0 ? "text-negative" : "text-positive"}`}>{money(available)}</p>
+      </div>
     </div>
   );
 }
 
-function CategoryMosaic({ categories }: { categories: DashboardData["expenseCategories"] }) {
-  const spans = ["sm:col-span-2", "sm:col-span-2", "sm:col-span-2", "sm:col-span-3", "sm:col-span-3", "sm:col-span-2"];
+function CategoryCarousel({ categories }: { categories: DashboardData["expenseCategories"] }) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const [activePage, setActivePage] = useState(0);
+  const pages = Array.from({ length: Math.ceil(categories.length / 2) }, (_, index) => categories.slice(index * 2, index * 2 + 2));
+
+  useEffect(() => {
+    setActivePage(0);
+    trackRef.current?.scrollTo({ left: 0 });
+  }, [categories.length]);
+
+  function goToPage(page: number) {
+    if (!pages.length) return;
+    const nextPage = (page + pages.length) % pages.length;
+    const track = trackRef.current;
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const pageWidth = (track?.firstElementChild as HTMLElement | null)?.offsetWidth ?? track?.clientWidth ?? 0;
+    setActivePage(nextPage);
+    track?.scrollTo({ left: pageWidth * nextPage, behavior: reduceMotion ? "auto" : "smooth" });
+  }
+
+  function updateActivePage() {
+    const track = trackRef.current;
+    const pageWidth = (track?.firstElementChild as HTMLElement | null)?.offsetWidth ?? 0;
+    if (!track || !pageWidth) return;
+    const nextPage = Math.max(0, Math.min(pages.length - 1, Math.round(track.scrollLeft / pageWidth)));
+    setActivePage(nextPage);
+  }
+
+  if (!categories.length) {
+    return <div className="mx-5 mb-5 rounded-xl bg-muted p-8 text-center text-xs text-muted-foreground sm:mx-6 sm:mb-6">No hay categorías para mostrar.</div>;
+  }
+
   return (
-    <div className="grid gap-3 px-5 pb-5 sm:grid-cols-6 sm:px-6 sm:pb-6">
-      {categories.slice(0, 6).map((item, index) => (
-        <Link
-          key={item.label}
-          href={`/movimientos?category=${encodeURIComponent(item.label)}&type=expense`}
-          aria-label={`Ver movimientos de la categoría ${item.label}`}
-          className={`group relative min-h-32 overflow-hidden rounded-2xl p-4 text-white transition hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${spans[index] ?? "sm:col-span-2"}`}
-          style={{ backgroundColor: item.color }}
-        >
-          <div className="pointer-events-none absolute -bottom-10 -right-8 size-28 rounded-full bg-white/12 transition-transform duration-500 group-hover:scale-125" />
-          <div className="relative flex h-full flex-col justify-between">
-            <div className="flex items-start justify-between gap-3">
-              <span className="flex size-8 items-center justify-center rounded-lg bg-white/15 backdrop-blur-sm"><ReceiptText className="size-4" aria-hidden="true" /></span>
-              <span className="rounded-full bg-black/10 px-2 py-1 text-[10px] font-bold backdrop-blur-sm">{Math.round(item.percentage)}%</span>
-            </div>
-            <div className="mt-5">
-              <p className="truncate text-xs font-semibold text-white/75">{item.label}</p>
-              <p className="mt-1 truncate text-lg font-bold tracking-tight">{money(item.amount)}</p>
-            </div>
+    <div className="pb-5 sm:pb-6">
+      <div
+        ref={trackRef}
+        onScroll={updateActivePage}
+        className="scrollbar-none flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain px-5 sm:px-6"
+        tabIndex={0}
+        aria-label="Carrusel de gastos por categoría; muestra dos tarjetas por página"
+      >
+        {pages.map((page, pageIndex) => (
+          <div key={page.map((item) => item.label).join("-")} className="grid w-full shrink-0 snap-start grid-cols-2 gap-3 pr-3 last:pr-0" aria-label={`Página ${pageIndex + 1} de ${pages.length}`}>
+            {page.map((item) => (
+              <Link
+                key={item.label}
+                href={`/movimientos?category=${encodeURIComponent(item.label)}&type=expense`}
+                aria-label={`Ver movimientos de la categoría ${item.label}`}
+                className="group relative min-h-32 min-w-0 overflow-hidden rounded-2xl p-4 text-white transition hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                style={{ backgroundColor: item.color }}
+              >
+                <div className="pointer-events-none absolute -bottom-10 -right-8 size-28 rounded-full bg-white/12 transition-transform duration-500 group-hover:scale-125" />
+                <div className="relative flex h-full min-w-0 flex-col justify-between">
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-white/15 backdrop-blur-sm"><ReceiptText className="size-4" aria-hidden="true" /></span>
+                    <span className="rounded-full bg-black/10 px-2 py-1 text-[10px] font-bold backdrop-blur-sm">{Math.round(item.percentage)}%</span>
+                  </div>
+                  <div className="mt-5 min-w-0">
+                    <p className="truncate text-xs font-semibold text-white/75">{item.label}</p>
+                    <p className="mt-1 truncate text-base font-bold tracking-tight sm:text-lg">{money(item.amount)}</p>
+                  </div>
+                </div>
+              </Link>
+            ))}
           </div>
-        </Link>
-      ))}
-      {categories.length === 0 ? <div className="col-span-full rounded-xl bg-muted p-8 text-center text-xs text-muted-foreground">No hay categorías para mostrar.</div> : null}
+        ))}
+      </div>
+
+      <div className="mt-4 flex items-center justify-center gap-3 px-5 sm:px-6">
+        <button type="button" onClick={() => goToPage(activePage - 1)} className="flex size-8 items-center justify-center rounded-full border border-border bg-card text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30" aria-label="Ver categorías anteriores">
+          <ChevronLeft className="size-4" aria-hidden="true" />
+        </button>
+        <div className="flex items-center gap-2" role="group" aria-label="Páginas del carrusel">
+          {pages.map((_, index) => (
+            <button key={index} type="button" onClick={() => goToPage(index)} className={`size-2.5 rounded-full transition ${index === activePage ? "scale-110 bg-primary" : "bg-border hover:bg-muted-foreground/50"}`} aria-label={`Ir a la página ${index + 1}`} aria-current={index === activePage ? "page" : undefined} />
+          ))}
+        </div>
+        <button type="button" onClick={() => goToPage(activePage + 1)} className="flex size-8 items-center justify-center rounded-full border border-border bg-card text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30" aria-label={activePage === pages.length - 1 ? "Volver a las primeras categorías" : "Ver más categorías"}>
+          <ChevronRight className="size-4" aria-hidden="true" />
+        </button>
+      </div>
+      <p className="mt-2 text-center text-[9px] font-medium text-muted-foreground" aria-live="polite">{activePage + 1} de {pages.length}</p>
     </div>
   );
 }
 
 function CompactMovement({ row }: { row: DashboardData["recentTransactions"][number] }) {
-  return <div className="min-w-0"><p className="truncate font-bold text-card-foreground">{row.category}</p><div className="mt-1 flex min-w-0 items-center gap-1.5"><span className="shrink-0 text-[9px] font-semibold text-muted-foreground">{row.type === "income" ? "Ingreso" : "Gasto"}</span><span className="max-w-[105px] truncate rounded-full bg-secondary px-1.5 py-0.5 text-[8px] font-bold text-secondary-foreground">{row.division}</span></div></div>;
+  return <div className="min-w-0"><div className="flex min-w-0 items-center gap-1.5"><p className="truncate font-bold text-card-foreground">{row.category}</p><TransactionDescriptionPopover description={row.description} /></div><div className="mt-1 flex min-w-0 items-center gap-1.5"><span className="shrink-0 text-[9px] font-semibold text-muted-foreground">{row.type === "income" ? "Ingreso" : "Gasto"}</span><span className="max-w-[105px] truncate rounded-full bg-secondary px-1.5 py-0.5 text-[8px] font-bold text-secondary-foreground">{row.division}</span></div></div>;
 }
 
 function Transactions({ rows }: { rows: DashboardData["recentTransactions"] }) {
@@ -307,7 +300,7 @@ function DivisionDetailModal({ division, rows, onClose }: { division: DashboardD
             <div className="rounded-2xl bg-surface-dark p-4 text-surface-dark-foreground sm:p-5">
               <p className="text-[10px] font-semibold text-white/45">Total de la división</p>
               <p className="mt-2 text-2xl font-bold tracking-tight">{money(division.amount)}</p>
-              <p className="mt-3 text-[10px] font-semibold text-emerald-300">{division.percentage.toFixed(1)}% del gasto total</p>
+              <p className="mt-3 text-[10px] font-semibold text-emerald-300">{division.percentage.toFixed(1)}% de tus ingresos</p>
             </div>
             <div className="grid grid-cols-2 gap-2">
               {division.categories.map((category) => (
@@ -389,22 +382,17 @@ export function DashboardView({ initialData, settings }: { initialData: Dashboar
         <div className="grid grid-cols-2 sm:min-w-[640px] sm:grid-cols-4">
           <SummaryMetric label="Ingreso total" value={compact(data.metrics.totalIncome)} icon={Wallet} tone="income" />
           <SummaryMetric className="border-l" label="Gastos totales" value={compact(data.metrics.totalExpenses)} icon={ReceiptText} tone="expense" />
-          <SummaryMetric className="border-t sm:border-l sm:border-t-0" label="Balance" value={compact(data.metrics.savings)} icon={PiggyBank} tone="balance" />
+          <SummaryMetric className="border-t sm:border-l sm:border-t-0" label="Disponible" value={compact(data.metrics.savings)} icon={PiggyBank} tone="balance" />
           <SummaryMetric className="border-l border-t sm:border-t-0" label="Presupuesto" value={data.budget === null ? "Sin definir" : compact(data.budget)} icon={Target} tone="budget" />
         </div>
       </section>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(310px,0.75fr)]">
-        <Panel title="Flujo de efectivo" description="Evolución de los últimos seis meses" action={<span className="hidden items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1 text-[9px] font-bold text-emerald-700 sm:inline-flex"><TrendingUp className="size-3" aria-hidden="true" />Tendencia mensual</span>}>
-          <CashFlowChart data={data.monthlyTrend} />
-        </Panel>
-        <Panel title="Gastos por división" description="Selecciona una división para ver sus categorías y registros" action={<Layers3 className="size-4 text-primary" aria-hidden="true" />}>
-          <ExpenseOverview divisions={data.expenseDivisions} expenses={data.metrics.totalExpenses} budget={data.budget} onSelect={setSelectedDivision} />
-        </Panel>
-      </div>
+      <Panel title="Gastos por división" description="Cuánto representa cada división frente a tus ingresos" action={<Layers3 className="size-4 text-primary" aria-hidden="true" />}>
+        <ExpenseOverview divisions={data.expenseDivisions} expenses={data.metrics.totalExpenses} income={data.metrics.totalIncome} onSelect={setSelectedDivision} />
+      </Panel>
 
       <Panel title="Gastos por categoría" description="Dónde se concentra tu dinero este periodo">
-        <CategoryMosaic categories={data.expenseCategories} />
+        <CategoryCarousel categories={data.expenseCategories} />
       </Panel>
 
       <Panel title="Transacciones recientes" description="Tus últimos movimientos registrados" action={<div className="flex items-center gap-2"><span className="hidden rounded-full bg-muted px-2.5 py-1 text-[9px] font-bold text-muted-foreground sm:inline-flex">{data.recentTransactions.length} movimientos</span><Link href="/movimientos" className="inline-flex h-9 items-center gap-2 rounded-xl bg-surface-dark px-3 text-[10px] font-bold text-surface-dark-foreground transition hover:bg-slate-800">Ver movimientos<Maximize2 className="size-3.5" aria-hidden="true" /></Link></div>}>
