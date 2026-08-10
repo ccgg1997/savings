@@ -12,12 +12,24 @@ import {
   Pencil,
   Plus,
   ReceiptText,
+  RefreshCw,
+  Save,
   Search,
+  Settings2,
   Trash2,
   WalletCards,
   X,
 } from "lucide-react";
-import type { TransactionFormOptions, TransactionInput, TransactionRecord, TransactionsData, TransactionType } from "@/lib/notion";
+import type {
+  TransactionFormOptions,
+  TransactionInput,
+  TransactionOptionCapabilities,
+  TransactionOptionCapability,
+  TransactionOptionField,
+  TransactionRecord,
+  TransactionsData,
+  TransactionType,
+} from "@/lib/notion";
 import { apiFetch } from "@/lib/api";
 import { captureClientError, notifySuccess } from "@/lib/client-errors";
 import { useBodyScrollLock } from "@/lib/use-body-scroll-lock";
@@ -29,6 +41,7 @@ const monthNames = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "juli
 
 type EditorState = { mode: "create"; type: TransactionType } | { mode: "edit"; transaction: TransactionRecord };
 type TransactionDraft = Omit<TransactionInput, "amount"> & { amount: string };
+type OptionMutationResult = { options: string[]; moved: number };
 
 function money(value: number) {
   return currency.format(value);
@@ -71,8 +84,11 @@ export function MovementsView({ initialData, initialDivision, initialCategory, i
   const [type, setType] = useState<"all" | TransactionType>(initialType ?? "all");
   const [search, setSearch] = useState("");
   const [month, setMonth] = useState(() => getMonthOptions(initialData.transactions)[0] ?? "all");
+  const [formOptions, setFormOptions] = useState(initialData.formOptions);
+  const [optionCapabilities, setOptionCapabilities] = useState(initialData.optionCapabilities);
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [deleting, setDeleting] = useState<TransactionRecord | null>(null);
+  const [managingOptions, setManagingOptions] = useState(false);
 
   const categories = useMemo(() => [...new Set(transactions.map((item) => item.category))].sort((a, b) => a.localeCompare(b, "es")), [transactions]);
   const divisions = useMemo(() => [...new Set(transactions.map((item) => item.division))].sort((a, b) => a.localeCompare(b, "es")), [transactions]);
@@ -121,6 +137,27 @@ export function MovementsView({ initialData, initialDivision, initialCategory, i
     setDeleting(null);
   }
 
+  async function refreshFromNotion() {
+    const data = await apiFetch<TransactionsData>("/api/transactions");
+    setTransactions(data.transactions);
+    setFormOptions(data.formOptions);
+    setOptionCapabilities(data.optionCapabilities);
+    return data.updatedAt;
+  }
+
+  function handleOptionsChanged(type: TransactionType, field: TransactionOptionField, options: string[], currentName?: string, replacement?: string) {
+    const optionKey = field === "category" ? "categories" : "divisions";
+    setFormOptions((current) => ({
+      ...current,
+      [type]: { ...current[type], [optionKey]: options },
+    }));
+    if (!currentName || !replacement) return;
+    setTransactions((current) => current.map((transaction) => {
+      if (transaction.type !== type || transaction[field] !== currentName) return transaction;
+      return { ...transaction, [field]: replacement };
+    }));
+  }
+
   return (
     <div className="min-w-0 space-y-6">
       <header className="flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
@@ -133,6 +170,7 @@ export function MovementsView({ initialData, initialDivision, initialCategory, i
           <p className="mt-2 max-w-2xl text-xs leading-5 text-muted-foreground">Consulta, filtra y administra los ingresos y gastos sincronizados con tus bases de Notion.</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => setManagingOptions(true)} disabled={!writable} className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-card px-4 text-xs font-bold text-foreground shadow-sm transition hover:-translate-y-0.5 hover:bg-muted disabled:pointer-events-none disabled:opacity-45"><Settings2 className="size-4" aria-hidden="true" />Divisiones y categorías</button>
           <button type="button" onClick={() => setEditor({ mode: "create", type: "income" })} className="inline-flex h-10 items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-xs font-bold text-emerald-700 shadow-sm transition hover:-translate-y-0.5 hover:bg-emerald-100"><ArrowDownLeft className="size-4" aria-hidden="true" />Nuevo ingreso</button>
           <button type="button" onClick={() => setEditor({ mode: "create", type: "expense" })} className="inline-flex h-10 items-center gap-2 rounded-xl bg-surface-dark px-4 text-xs font-bold text-surface-dark-foreground shadow-lg shadow-slate-950/10 transition hover:-translate-y-0.5 hover:bg-slate-800"><Plus className="size-4" aria-hidden="true" />Nuevo gasto</button>
         </div>
@@ -175,8 +213,9 @@ export function MovementsView({ initialData, initialDivision, initialCategory, i
         <MovementList rows={filtered} writable={writable} onEdit={(transaction) => setEditor({ mode: "edit", transaction })} onDelete={setDeleting} />
       </section>
 
-      {editor ? <TransactionEditor state={editor} formOptions={initialData.formOptions} writable={writable} onClose={() => setEditor(null)} onSaved={handleSaved} /> : null}
+      {editor ? <TransactionEditor state={editor} formOptions={formOptions} writable={writable} onClose={() => setEditor(null)} onSaved={handleSaved} /> : null}
       {deleting ? <DeleteTransactionDialog transaction={deleting} onClose={() => setDeleting(null)} onDeleted={handleDeleted} /> : null}
+      {managingOptions ? <OptionsManager formOptions={formOptions} capabilities={optionCapabilities} transactions={transactions} updatedAt={initialData.updatedAt} onClose={() => setManagingOptions(false)} onOptionsChanged={handleOptionsChanged} onRefresh={refreshFromNotion} /> : null}
     </div>
   );
 }
@@ -295,6 +334,223 @@ function TransactionEditor({ state, formOptions, writable, onClose, onSaved }: {
 function NotionSelect({ label, value, options, onChange, className, fullWidth = false }: { label: string; value: string; options: string[]; onChange: (value: string) => void; className: string; fullWidth?: boolean }) {
   const available = value && !options.includes(value) ? [value, ...options] : options;
   return <label className={`relative space-y-1.5 ${fullWidth ? "sm:col-span-2" : ""}`}><span className="text-xs font-bold text-card-foreground">{label}</span><span className="relative block"><select required value={value} onChange={(event) => onChange(event.target.value)} disabled={available.length === 0} className={className}><option value="" disabled>{available.length ? `Selecciona ${label.toLocaleLowerCase("es")}` : `Sin opciones de ${label.toLocaleLowerCase("es")}`}</option>{available.map((option) => <option key={option} value={option}>{option}</option>)}</select><ChevronDown className="pointer-events-none absolute right-3 top-3.5 size-4 text-muted-foreground" aria-hidden="true" /></span></label>;
+}
+
+function OptionsManager({ formOptions, capabilities, transactions, updatedAt, onClose, onOptionsChanged, onRefresh }: {
+  formOptions: Record<TransactionType, TransactionFormOptions>;
+  capabilities: TransactionOptionCapabilities;
+  transactions: TransactionRecord[];
+  updatedAt: string;
+  onClose: () => void;
+  onOptionsChanged: (type: TransactionType, field: TransactionOptionField, options: string[], currentName?: string, replacement?: string) => void;
+  onRefresh: () => Promise<string>;
+}) {
+  const [activeType, setActiveType] = useState<TransactionType>("expense");
+  const [syncing, setSyncing] = useState(false);
+  const [lastSync, setLastSync] = useState(updatedAt);
+  useBodyScrollLock(true);
+
+  async function synchronize() {
+    setSyncing(true);
+    try {
+      const nextUpdatedAt = await onRefresh();
+      setLastSync(nextUpdatedAt);
+      notifySuccess("Opciones actualizadas desde Notion.");
+    } catch (error) {
+      captureClientError(error, { action: "refresh_transaction_options" });
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-stretch overflow-hidden overscroll-none bg-slate-950/55 backdrop-blur-sm sm:items-center sm:justify-center sm:p-6" role="presentation">
+      <section role="dialog" aria-modal="true" aria-labelledby="options-manager-title" className="flex h-[100dvh] w-full max-w-5xl flex-col overflow-hidden bg-card shadow-2xl sm:h-auto sm:max-h-[92dvh] sm:rounded-3xl sm:border sm:border-border">
+        <header className="flex shrink-0 items-start justify-between gap-4 border-b border-border px-5 py-5 sm:px-6">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-primary">Opciones sincronizadas</p>
+            <h2 id="options-manager-title" className="mt-1 text-xl font-bold tracking-tight text-card-foreground">Divisiones y categorías</h2>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">Cada cambio se guarda directamente en la base de Notion seleccionada.</p>
+          </div>
+          <button type="button" onClick={onClose} disabled={syncing} className="flex size-9 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:opacity-50"><X className="size-4" aria-hidden="true" /><span className="sr-only">Cerrar</span></button>
+        </header>
+
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div className="flex shrink-0 flex-col gap-3 border-b border-border bg-muted/30 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+            <div className="grid grid-cols-2 gap-2 rounded-xl bg-muted p-1 sm:w-72">
+              {(["income", "expense"] as const).map((type) => (
+                <button key={type} type="button" onClick={() => setActiveType(type)} className={`h-9 rounded-lg text-xs font-bold transition ${activeType === type ? "bg-card text-card-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
+                  {type === "income" ? "Ingresos" : "Gastos"}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center justify-between gap-3 sm:justify-end">
+              <p className="text-[10px] text-muted-foreground">Última sincronización: {new Intl.DateTimeFormat("es-CO", { hour: "2-digit", minute: "2-digit" }).format(new Date(lastSync))}</p>
+              <button type="button" onClick={synchronize} disabled={syncing} className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-card px-3 text-[10px] font-bold text-foreground transition hover:bg-muted disabled:pointer-events-none disabled:opacity-50"><RefreshCw className={`size-3.5 ${syncing ? "animate-spin" : ""}`} aria-hidden="true" />{syncing ? "Sincronizando…" : "Sincronizar"}</button>
+            </div>
+          </div>
+
+          <div className="scrollbar-subtle min-h-0 flex-1 overflow-y-auto overscroll-contain p-5 sm:p-6">
+            <div className="mb-5 rounded-xl bg-secondary p-3 text-[11px] leading-5 text-secondary-foreground">
+              Estás administrando las opciones de <strong>{activeType === "income" ? "Ingresos" : "Gastos"}</strong>. Las listas de la otra base no se modificarán.
+            </div>
+            <div className="grid gap-5 lg:grid-cols-2">
+              <ManagedOptionSection
+                key={`${activeType}-division`}
+                type={activeType}
+                field="division"
+                options={formOptions[activeType].divisions}
+                capability={capabilities[activeType].division}
+                transactions={transactions}
+                onChanged={(options, currentName, replacement) => onOptionsChanged(activeType, "division", options, currentName, replacement)}
+              />
+              <ManagedOptionSection
+                key={`${activeType}-category`}
+                type={activeType}
+                field="category"
+                options={formOptions[activeType].categories}
+                capability={capabilities[activeType].category}
+                transactions={transactions}
+                onChanged={(options, currentName, replacement) => onOptionsChanged(activeType, "category", options, currentName, replacement)}
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ManagedOptionSection({ type, field, options, capability, transactions, onChanged }: {
+  type: TransactionType;
+  field: TransactionOptionField;
+  options: string[];
+  capability: TransactionOptionCapability;
+  transactions: TransactionRecord[];
+  onChanged: (options: string[], currentName?: string, replacement?: string) => void;
+}) {
+  const label = field === "division" ? "Divisiones" : "Categorías";
+  const singular = field === "division" ? "división" : "categoría";
+  const [newName, setNewName] = useState("");
+  const [editingName, setEditingName] = useState<string | null>(null);
+  const [nextName, setNextName] = useState("");
+  const [deletingName, setDeletingName] = useState<string | null>(null);
+  const [replacement, setReplacement] = useState("");
+  const [busy, setBusy] = useState<"create" | "rename" | "delete" | null>(null);
+  const fieldClass = "h-10 w-full rounded-xl border border-input bg-background px-3 text-xs text-foreground placeholder:text-muted-foreground focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/20 disabled:cursor-not-allowed disabled:opacity-55";
+  const usageCount = deletingName ? transactions.filter((transaction) => transaction.type === type && transaction[field] === deletingName).length : 0;
+  const replacements = deletingName ? options.filter((option) => option !== deletingName) : [];
+
+  async function createOption(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy("create");
+    try {
+      const result = await apiFetch<OptionMutationResult>("/api/transaction-options", { method: "POST", body: JSON.stringify({ type, field, name: newName }) });
+      onChanged(result.options);
+      setNewName("");
+      notifySuccess(`${singular[0].toLocaleUpperCase("es")}${singular.slice(1)} creada en Notion.`);
+    } catch (error) {
+      captureClientError(error, { action: "create_transaction_option", type, field });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function renameOption(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingName) return;
+    setBusy("rename");
+    try {
+      const result = await apiFetch<OptionMutationResult>("/api/transaction-options", { method: "PATCH", body: JSON.stringify({ type, field, currentName: editingName, nextName }) });
+      onChanged(result.options, editingName, nextName);
+      setEditingName(null);
+      setNextName("");
+      notifySuccess(result.moved ? `Opción renombrada y ${result.moved} movimiento${result.moved === 1 ? "" : "s"} actualizado${result.moved === 1 ? "" : "s"}.` : "Opción renombrada en Notion.");
+    } catch (error) {
+      captureClientError(error, { action: "rename_transaction_option", type, field, currentName: editingName });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function deleteOption() {
+    if (!deletingName) return;
+    setBusy("delete");
+    try {
+      const result = await apiFetch<OptionMutationResult>("/api/transaction-options", { method: "DELETE", body: JSON.stringify({ type, field, name: deletingName, ...(replacement ? { replacement } : {}) }) });
+      onChanged(result.options, deletingName, replacement || undefined);
+      setDeletingName(null);
+      setReplacement("");
+      notifySuccess(result.moved ? `Opción eliminada y ${result.moved} movimiento${result.moved === 1 ? "" : "s"} reasignado${result.moved === 1 ? "" : "s"}.` : "Opción eliminada de Notion.");
+    } catch (error) {
+      captureClientError(error, { action: "delete_transaction_option", type, field, name: deletingName });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <section className="min-w-0 rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-5" aria-labelledby={`${type}-${field}-title`}>
+      <div>
+        <h3 id={`${type}-${field}-title`} className="text-sm font-bold text-card-foreground">{label}</h3>
+        <p className="mt-1 text-[10px] leading-4 text-muted-foreground">
+          {capability.propertyName ? `Propiedad “${capability.propertyName}” en Notion.` : "La propiedad se creará como Selección en Notion."}
+        </p>
+      </div>
+
+      {!capability.editable ? (
+        <div role="status" className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] leading-5 text-amber-800">
+          Esta propiedad es de tipo <strong>{capability.propertyType ?? "no compatible"}</strong>. Cámbiala en Notion a Selección o Selección múltiple para habilitar el CRUD.
+        </div>
+      ) : (
+        <form onSubmit={createOption} className="mt-4 flex gap-2">
+          <label className="min-w-0 flex-1"><span className="sr-only">Nueva {singular}</span><input required maxLength={100} value={newName} onChange={(event) => setNewName(event.target.value)} disabled={Boolean(busy)} className={fieldClass} placeholder={`Nueva ${singular}`} /></label>
+          <button type="submit" disabled={Boolean(busy) || !newName.trim()} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl bg-surface-dark px-3 text-[10px] font-bold text-surface-dark-foreground transition hover:bg-slate-800 disabled:pointer-events-none disabled:opacity-45">{busy === "create" ? <LoaderCircle className="size-3.5 animate-spin" aria-hidden="true" /> : <Plus className="size-3.5" aria-hidden="true" />}Agregar</button>
+        </form>
+      )}
+
+      <div className="mt-4 space-y-2">
+        {options.map((option) => {
+          const isEditing = editingName === option;
+          const isDeleting = deletingName === option;
+          return (
+            <div key={option} className="overflow-hidden rounded-xl border border-border bg-background">
+              {isEditing ? (
+                <form onSubmit={renameOption} className="flex gap-2 p-2">
+                  <label className="min-w-0 flex-1"><span className="sr-only">Nuevo nombre para {option}</span><input required autoFocus maxLength={100} value={nextName} onChange={(event) => setNextName(event.target.value)} disabled={Boolean(busy)} className={fieldClass} /></label>
+                  <button type="submit" disabled={Boolean(busy) || !nextName.trim() || nextName.trim() === option} className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground transition hover:opacity-90 disabled:pointer-events-none disabled:opacity-45" aria-label={`Guardar nuevo nombre de ${option}`}>{busy === "rename" ? <LoaderCircle className="size-4 animate-spin" aria-hidden="true" /> : <Save className="size-4" aria-hidden="true" />}</button>
+                  <button type="button" onClick={() => { setEditingName(null); setNextName(""); }} disabled={Boolean(busy)} className="flex size-10 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:opacity-45" aria-label="Cancelar edición"><X className="size-4" aria-hidden="true" /></button>
+                </form>
+              ) : (
+                <div className="flex min-w-0 items-center gap-2 px-3 py-2">
+                  <span className="min-w-0 flex-1 truncate text-xs font-semibold text-card-foreground">{option}</span>
+                  <button type="button" onClick={() => { setEditingName(option); setNextName(option); setDeletingName(null); setReplacement(""); }} disabled={!capability.editable || Boolean(busy)} className="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-35" aria-label={`Renombrar ${option}`}><Pencil className="size-3.5" aria-hidden="true" /></button>
+                  <button type="button" onClick={() => { setDeletingName(option); setReplacement(""); setEditingName(null); setNextName(""); }} disabled={!capability.editable || Boolean(busy)} className="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-red-50 hover:text-red-600 disabled:pointer-events-none disabled:opacity-35" aria-label={`Eliminar ${option}`}><Trash2 className="size-3.5" aria-hidden="true" /></button>
+                </div>
+              )}
+
+              {isDeleting ? (
+                <div className="border-t border-border bg-red-50/60 p-3" role="group" aria-label={`Confirmar eliminación de ${option}`}>
+                  <p className="text-[11px] font-bold text-red-800">¿Eliminar “{option}”?</p>
+                  {usageCount > 0 ? (
+                    <div className="mt-2 space-y-2">
+                      <p className="text-[10px] leading-4 text-red-700">La usan {usageCount} {usageCount === 1 ? "movimiento" : "movimientos"}. Elige dónde reasignarlos antes de eliminar.</p>
+                      <label className="relative block"><span className="sr-only">Opción de reemplazo</span><select required value={replacement} onChange={(event) => setReplacement(event.target.value)} disabled={Boolean(busy)} className={`${fieldClass} appearance-none pr-9`}><option value="" disabled>Selecciona un reemplazo</option>{replacements.map((item) => <option key={item} value={item}>{item}</option>)}</select><ChevronDown className="pointer-events-none absolute right-3 top-3 size-4 text-muted-foreground" aria-hidden="true" /></label>
+                    </div>
+                  ) : <p className="mt-1 text-[10px] leading-4 text-red-700">No hay movimientos visibles usando esta opción.</p>}
+                  <div className="mt-3 flex justify-end gap-2">
+                    <button type="button" onClick={() => { setDeletingName(null); setReplacement(""); }} disabled={Boolean(busy)} className="h-9 rounded-xl border border-border bg-card px-3 text-[10px] font-bold text-foreground transition hover:bg-muted disabled:opacity-45">Cancelar</button>
+                    <button type="button" onClick={deleteOption} disabled={Boolean(busy) || (usageCount > 0 && !replacement) || (usageCount > 0 && replacements.length === 0)} className="inline-flex h-9 items-center gap-2 rounded-xl bg-red-600 px-3 text-[10px] font-bold text-white transition hover:bg-red-700 disabled:pointer-events-none disabled:opacity-45">{busy === "delete" ? <LoaderCircle className="size-3.5 animate-spin" aria-hidden="true" /> : <Trash2 className="size-3.5" aria-hidden="true" />}Eliminar</button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+        {options.length === 0 ? <p className="rounded-xl border border-dashed border-border p-5 text-center text-[11px] text-muted-foreground">No hay {label.toLocaleLowerCase("es")} en esta base de Notion.</p> : null}
+      </div>
+    </section>
+  );
 }
 
 function DeleteTransactionDialog({ transaction, onClose, onDeleted }: { transaction: TransactionRecord; onClose: () => void; onDeleted: (id: string) => void }) {
