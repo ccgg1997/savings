@@ -1,14 +1,15 @@
 "use client";
 
+import Link from "next/link";
 import { useId, useState } from "react";
 import {
   ArrowDownRight,
   ArrowUpRight,
   CalendarDays,
-  CircleDollarSign,
+  ChevronRight,
   Clock3,
-  CreditCard,
-  Landmark,
+  Layers3,
+  Maximize2,
   PiggyBank,
   ReceiptText,
   RefreshCw,
@@ -17,6 +18,7 @@ import {
   Target,
   TrendingUp,
   Wallet,
+  X,
 } from "lucide-react";
 import type { DashboardData } from "@/lib/notion";
 import type { AppSettingsData } from "@/lib/settings";
@@ -177,8 +179,8 @@ function Legend({ color, label, line = false }: { color: string; label: string; 
   return <span className="flex items-center gap-2"><span className={`${line ? "h-0.5 w-4 rounded-full" : "size-2 rounded-full"} ${color}`} />{label}</span>;
 }
 
-function ExpenseOverview({ categories, expenses, budget }: { categories: DashboardData["expenseCategories"]; expenses: number; budget: number | null }) {
-  const main = categories[0];
+function ExpenseOverview({ divisions, expenses, budget, onSelect }: { divisions: DashboardData["expenseDivisions"]; expenses: number; budget: number | null; onSelect: (division: string) => void }) {
+  const main = divisions[0];
   const budgetProgress = budget ? Math.min((expenses / budget) * 100, 100) : null;
   const remaining = budget ? budget - expenses : null;
 
@@ -188,7 +190,7 @@ function ExpenseOverview({ categories, expenses, budget }: { categories: Dashboa
         <div className="pointer-events-none absolute -right-12 -top-12 size-32 rounded-full bg-orange-400/15 blur-2xl" />
         <div className="relative flex items-center justify-between gap-4">
           <div>
-            <p className="text-[10px] font-semibold text-white/45">{budget ? "Presupuesto mensual" : "Principal categoría"}</p>
+            <p className="text-[10px] font-semibold text-white/45">{budget ? "Presupuesto mensual" : "Principal división"}</p>
             <p className="mt-1 text-lg font-bold tracking-tight">{budget ? money(budget) : main?.label ?? "Sin datos"}</p>
             <p className={`mt-2 text-[10px] font-semibold ${remaining !== null && remaining < 0 ? "text-red-300" : "text-emerald-300"}`}>
               {budget && remaining !== null ? `${remaining >= 0 ? money(remaining) : money(Math.abs(remaining))} ${remaining >= 0 ? "disponibles" : "por encima"}` : main ? `${main.percentage.toFixed(0)}% del gasto total` : "Aún no hay movimientos"}
@@ -201,20 +203,21 @@ function ExpenseOverview({ categories, expenses, budget }: { categories: Dashboa
       </div>
 
       <div className="mt-5 space-y-4">
-        {categories.slice(0, 5).map((item) => (
-          <div key={item.label}>
+        {divisions.slice(0, 5).map((item) => (
+          <button key={item.label} type="button" onClick={() => onSelect(item.label)} className="group block w-full rounded-xl text-left transition hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25">
             <div className="mb-1.5 flex items-center justify-between gap-3 text-[10px]">
               <span className="flex min-w-0 items-center gap-2 font-semibold text-card-foreground">
                 <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: item.color }} />
                 <span className="truncate">{item.label}</span>
               </span>
-              <span className="shrink-0 font-bold text-card-foreground">{money(item.amount)} <span className="ml-1 font-medium text-muted-foreground">{Math.round(item.percentage)}%</span></span>
+              <span className="flex shrink-0 items-center gap-1 font-bold text-card-foreground">{money(item.amount)} <span className="ml-1 font-medium text-muted-foreground">{Math.round(item.percentage)}%</span><ChevronRight className="size-3 text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden="true" /></span>
             </div>
             <div className="h-1.5 overflow-hidden rounded-full bg-muted">
               <span className="block h-full rounded-full transition-all" style={{ width: `${Math.max(item.percentage, 2)}%`, backgroundColor: item.color }} />
             </div>
-          </div>
+          </button>
         ))}
+        {divisions.length === 0 ? <p className="py-6 text-center text-xs text-muted-foreground">No hay divisiones para mostrar.</p> : null}
       </div>
     </div>
   );
@@ -253,14 +256,15 @@ function Transactions({ rows }: { rows: DashboardData["recentTransactions"] }) {
         {rows.slice(0, 5).map((row) => <TransactionMobile key={row.id} row={row} />)}
       </div>
       <div className="hidden overflow-x-auto px-6 pb-5 sm:block">
-        <table className="w-full min-w-[680px] table-fixed text-left text-[11px]">
+        <table className="w-full min-w-[820px] table-fixed text-left text-[11px]">
           <thead>
             <tr className="border-b border-border text-[9px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
-              <th className="w-[32%] pb-3">Movimiento</th>
-              <th className="w-[15%] pb-3">Fecha</th>
-              <th className="w-[18%] pb-3">Categoría</th>
-              <th className="w-[18%] pb-3">Cuenta</th>
-              <th className="w-[17%] pb-3 text-right">Monto</th>
+              <th className="w-[28%] pb-3">Movimiento</th>
+              <th className="w-[13%] pb-3">Fecha</th>
+              <th className="w-[16%] pb-3">División</th>
+              <th className="w-[16%] pb-3">Categoría</th>
+              <th className="w-[14%] pb-3">Cuenta</th>
+              <th className="w-[13%] pb-3 text-right">Monto</th>
             </tr>
           </thead>
           <tbody>
@@ -274,7 +278,8 @@ function Transactions({ rows }: { rows: DashboardData["recentTransactions"] }) {
                     <div className="min-w-0"><p className="truncate font-bold text-card-foreground">{row.description}</p><p className="mt-0.5 text-[9px] text-muted-foreground">{row.type === "income" ? "Ingreso recibido" : "Pago realizado"}</p></div>
                   </div>
                 </td>
-                <td className="truncate py-3 text-muted-foreground">{dateFormatter.format(new Date(row.date))}</td>
+                <td className="truncate py-3 text-muted-foreground">{dateFormatter.format(new Date(`${row.date}T12:00:00`))}</td>
+                <td className="truncate py-3"><span className="rounded-full bg-secondary px-2.5 py-1 font-semibold text-secondary-foreground">{row.division}</span></td>
                 <td className="truncate py-3"><span className="rounded-full bg-muted px-2.5 py-1 font-semibold text-muted-foreground">{row.category}</span></td>
                 <td className="truncate py-3 text-muted-foreground">{row.account}</td>
                 <td className={`truncate py-3 text-right font-bold ${row.type === "income" ? "text-emerald-600" : "text-card-foreground"}`}>{row.type === "income" ? "+" : "−"}{money(row.amount)}</td>
@@ -293,34 +298,22 @@ function TransactionMobile({ row }: { row: DashboardData["recentTransactions"][n
       <span className={`flex size-9 shrink-0 items-center justify-center rounded-xl ${row.type === "income" ? "bg-emerald-500/10 text-emerald-600" : "bg-orange-500/10 text-orange-600"}`}>
         {row.type === "income" ? <ArrowDownRight className="size-4" aria-hidden="true" /> : <ArrowUpRight className="size-4" aria-hidden="true" />}
       </span>
-      <div className="min-w-0 flex-1"><p className="truncate text-xs font-bold text-card-foreground">{row.description}</p><p className="mt-0.5 truncate text-[10px] text-muted-foreground">{row.category} · {row.account}</p></div>
-      <div className="text-right"><p className={`text-xs font-bold ${row.type === "income" ? "text-emerald-600" : "text-card-foreground"}`}>{row.type === "income" ? "+" : "−"}{money(row.amount)}</p><p className="mt-0.5 text-[9px] text-muted-foreground">{dateFormatter.format(new Date(row.date))}</p></div>
+      <div className="min-w-0 flex-1"><p className="truncate text-xs font-bold text-card-foreground">{row.description}</p><p className="mt-0.5 truncate text-[10px] text-muted-foreground">{row.division} · {row.category} · {row.account}</p></div>
+      <div className="text-right"><p className={`text-xs font-bold ${row.type === "income" ? "text-emerald-600" : "text-card-foreground"}`}>{row.type === "income" ? "+" : "−"}{money(row.amount)}</p><p className="mt-0.5 text-[9px] text-muted-foreground">{dateFormatter.format(new Date(`${row.date}T12:00:00`))}</p></div>
     </div>
   );
 }
 
-function IncomeSources({ sources }: { sources: DashboardData["incomeSources"] }) {
-  return (
-    <div className="grid gap-3 px-5 pb-5 sm:grid-cols-3 sm:px-6 sm:pb-6 xl:grid-cols-1">
-      {sources.slice(0, 3).map((source, index) => {
-        const Icon = [Landmark, CircleDollarSign, CreditCard][index] ?? CircleDollarSign;
-        return (
-          <div key={source.label} className="flex items-center gap-3 rounded-xl border border-border/80 bg-background/65 p-3.5">
-            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-secondary-foreground"><Icon className="size-4" aria-hidden="true" /></span>
-            <div className="min-w-0 flex-1"><p className="truncate text-[10px] font-semibold text-muted-foreground">{source.label}</p><p className="mt-1 truncate text-sm font-bold text-card-foreground">{money(source.amount)}</p></div>
-            <span className="text-[10px] font-bold text-primary">{Math.round(source.percentage)}%</span>
-          </div>
-        );
-      })}
-      {sources.length === 0 ? <p className="col-span-full py-4 text-center text-xs text-muted-foreground">No hay fuentes de ingreso para mostrar.</p> : null}
-    </div>
-  );
+function DivisionDetailModal({ division, rows, onClose }: { division: DashboardData["expenseDivisions"][number]; rows: DashboardData["recentTransactions"]; onClose: () => void }) {
+  const records = rows.filter((row) => row.type === "expense" && row.division === division.label);
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-3 backdrop-blur-sm sm:p-6" role="presentation"><section role="dialog" aria-modal="true" aria-labelledby="division-detail-title" className="max-h-[92dvh] w-full max-w-4xl overflow-y-auto rounded-3xl border border-border bg-card shadow-2xl"><div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-border bg-card/95 px-5 py-5 backdrop-blur sm:px-6"><div><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-primary">Detalle por división</p><h2 id="division-detail-title" className="mt-1 text-xl font-bold tracking-tight text-card-foreground">{division.label}</h2><p className="mt-1 text-[11px] text-muted-foreground">{records.length} registros · {division.categories.length} categorías</p></div><button type="button" onClick={onClose} className="flex size-9 items-center justify-center rounded-xl text-muted-foreground transition hover:bg-muted hover:text-foreground"><X className="size-4" aria-hidden="true" /><span className="sr-only">Cerrar</span></button></div><div className="space-y-5 p-5 sm:p-6"><div className="grid gap-3 sm:grid-cols-[1fr_2fr]"><div className="rounded-2xl bg-surface-dark p-5 text-surface-dark-foreground"><p className="text-[10px] font-semibold text-white/45">Total de la división</p><p className="mt-2 text-2xl font-bold tracking-tight">{money(division.amount)}</p><p className="mt-3 text-[10px] font-semibold text-emerald-300">{division.percentage.toFixed(1)}% del gasto total</p></div><div className="grid gap-2 sm:grid-cols-2">{division.categories.map((category) => <div key={category.label} className="rounded-xl border border-border bg-background/65 p-3"><div className="flex items-center justify-between gap-3"><span className="truncate text-[10px] font-bold text-card-foreground">{category.label}</span><span className="text-[9px] font-bold text-primary">{Math.round(category.percentage)}%</span></div><p className="mt-2 text-sm font-bold text-card-foreground">{money(category.amount)}</p></div>)}</div></div><div><h3 className="text-xs font-bold text-card-foreground">Registros de {division.label}</h3><div className="mt-3 divide-y divide-border/70 rounded-2xl border border-border">{records.map((row) => <div key={row.id} className="grid gap-2 p-3 text-[11px] sm:grid-cols-[1.4fr_1fr_1fr_auto] sm:items-center sm:px-4"><div><p className="font-bold text-card-foreground">{row.description}</p><p className="mt-0.5 text-[9px] text-muted-foreground">{dateFormatter.format(new Date(`${row.date}T12:00:00`))}</p></div><span className="text-muted-foreground">{row.category}</span><span className="text-muted-foreground">{row.account}</span><span className="font-bold text-card-foreground">−{money(row.amount)}</span></div>)}{records.length === 0 ? <p className="p-6 text-center text-xs text-muted-foreground">No hay registros para esta división.</p> : null}</div></div><div className="flex justify-end"><Link href={`/movimientos?division=${encodeURIComponent(division.label)}`} className="inline-flex h-10 items-center gap-2 rounded-xl bg-surface-dark px-4 text-xs font-bold text-surface-dark-foreground transition hover:bg-slate-800">Abrir movimientos filtrados<Maximize2 className="size-3.5" aria-hidden="true" /></Link></div></div></section></div>;
 }
 
 export function DashboardView({ initialData, settings }: { initialData: DashboardData; settings: AppSettingsData }) {
   const [data, setData] = useState(initialData);
   const [refreshing, setRefreshing] = useState(false);
   const [period, setPeriod] = useState(initialData.period);
+  const [selectedDivision, setSelectedDivision] = useState<string | null>(null);
 
   async function refresh() {
     setRefreshing(true);
@@ -343,6 +336,7 @@ export function DashboardView({ initialData, settings }: { initialData: Dashboar
   const currentRate = current.income ? (currentSavings / current.income) * 100 : 0;
   const previousRate = previous.income ? (previousSavings / previous.income) * 100 : 0;
   const density = settings.compactMode ? "space-y-4" : "space-y-6";
+  const divisionDetail = data.expenseDivisions.find((item) => item.label === selectedDivision);
 
   return (
     <div className={density}>
@@ -380,8 +374,8 @@ export function DashboardView({ initialData, settings }: { initialData: Dashboar
         <Panel title="Flujo de efectivo" description="Evolución de los últimos seis meses" action={<span className="hidden items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1 text-[9px] font-bold text-emerald-700 sm:inline-flex"><TrendingUp className="size-3" aria-hidden="true" />Tendencia mensual</span>}>
           <CashFlowChart data={data.monthlyTrend} />
         </Panel>
-        <Panel title="Estructura de gastos" description="Participación por categoría">
-          <ExpenseOverview categories={data.expenseCategories} expenses={data.metrics.totalExpenses} budget={data.budget} />
+        <Panel title="Gastos por división" description="Selecciona una división para ver sus categorías y registros" action={<Layers3 className="size-4 text-primary" aria-hidden="true" />}>
+          <ExpenseOverview divisions={data.expenseDivisions} expenses={data.metrics.totalExpenses} budget={data.budget} onSelect={setSelectedDivision} />
         </Panel>
       </div>
 
@@ -389,19 +383,16 @@ export function DashboardView({ initialData, settings }: { initialData: Dashboar
         <CategoryMosaic categories={data.expenseCategories} />
       </Panel>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
-        <Panel title="Transacciones recientes" description="Tus últimos movimientos registrados" action={<span className="rounded-full bg-muted px-2.5 py-1 text-[9px] font-bold text-muted-foreground">{data.recentTransactions.length} movimientos</span>}>
-          <Transactions rows={data.recentTransactions} />
-        </Panel>
-        <Panel title="Fuentes de ingreso" description="Composición del dinero que recibes">
-          <IncomeSources sources={data.incomeSources} />
-        </Panel>
-      </div>
+      <Panel title="Transacciones recientes" description="Tus últimos movimientos registrados" action={<div className="flex items-center gap-2"><span className="hidden rounded-full bg-muted px-2.5 py-1 text-[9px] font-bold text-muted-foreground sm:inline-flex">{data.recentTransactions.length} movimientos</span><Link href="/movimientos" className="inline-flex h-9 items-center gap-2 rounded-xl bg-surface-dark px-3 text-[10px] font-bold text-surface-dark-foreground transition hover:bg-slate-800">Ver movimientos<Maximize2 className="size-3.5" aria-hidden="true" /></Link></div>}>
+        <Transactions rows={data.recentTransactions} />
+      </Panel>
 
       <footer className="flex flex-col justify-between gap-2 border-t border-border/70 pt-4 text-[10px] text-muted-foreground sm:flex-row sm:items-center">
         <span className="flex items-center gap-1.5"><ShieldCheck className="size-3.5 text-primary" aria-hidden="true" />Información procesada de forma segura en el servidor</span>
         <span>{data.source === "notion" ? "Sincronizado con Notion" : "Vista con datos de demostración"}</span>
       </footer>
+
+      {divisionDetail ? <DivisionDetailModal division={divisionDetail} rows={data.recentTransactions} onClose={() => setSelectedDivision(null)} /> : null}
     </div>
   );
 }

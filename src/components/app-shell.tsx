@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
-import { ChevronRight, LayoutDashboard, LogOut, ShieldCheck, UsersRound, WalletCards } from "lucide-react";
+import { ChevronRight, LayoutDashboard, LogOut, ReceiptText, ShieldCheck, UsersRound, WalletCards } from "lucide-react";
 import type { Session } from "next-auth";
 import { captureClientError, notifyError } from "@/lib/client-errors";
 import type { AppSettingsData } from "@/lib/settings";
@@ -11,7 +11,10 @@ import type { AppSettingsData } from "@/lib/settings";
 export function AppShell({ children, session, settings }: { children: React.ReactNode; session: Session; settings: AppSettingsData }) {
   const pathname = usePathname();
   const isAdmin = session.user.role === "ADMIN";
-  const navItems = [{ href: "/dashboard", label: "Resumen", description: "Tu panorama financiero", icon: LayoutDashboard }];
+  const navItems = [
+    { href: "/dashboard", label: "Resumen", description: "Tu panorama financiero", icon: LayoutDashboard },
+    { href: "/movimientos", label: "Movimientos", description: "Ingresos, gastos y filtros", icon: ReceiptText },
+  ];
   if (isAdmin) navItems.push({ href: "/admin", label: "Administración", description: "Usuarios y apariencia", icon: UsersRound });
 
   async function handleSignOut() {
