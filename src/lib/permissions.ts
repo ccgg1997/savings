@@ -12,6 +12,7 @@ export async function requireUser() {
   const session = await getCurrentSession();
   if (!session?.user?.id) throw new AppError("Debes iniciar sesión para continuar.", "UNAUTHORIZED", 401);
   if (session.user.status === "SUSPENDED") throw new AppError("Tu usuario está suspendido.", "SUSPENDED", 403);
+  if (!session.user.sessionValid) throw new AppError("Tu sesión venció. Inicia sesión nuevamente.", "SESSION_EXPIRED", 401);
   return session.user;
 }
 

@@ -12,6 +12,7 @@ const userCreateSchema = z.object({
   password: z.string().min(12).max(128).optional().or(z.literal("")),
   role: z.enum(["USER", "ADMIN"]).default("USER"),
   status: z.enum(["ACTIVE", "SUSPENDED"]).default("ACTIVE"),
+  persistentSession: z.boolean().default(false),
 });
 
 function normalizeError(error: unknown) {
@@ -46,7 +47,7 @@ export async function POST(request: Request) {
 
     const passwordHash = input.password ? await hashPassword(input.password) : null;
     const user = await prisma.user.create({
-      data: { name: input.name, email, passwordHash, role: input.role, status: input.status },
+      data: { name: input.name, email, passwordHash, role: input.role, status: input.status, persistentSession: input.persistentSession },
       select: adminUserSelect,
     });
     return NextResponse.json({ user: publicAdminUser(user) }, { status: 201, headers: { "x-request-id": id } });

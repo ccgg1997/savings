@@ -12,6 +12,8 @@ const userUpdateSchema = z.object({
   password: z.string().min(12).max(128).optional(),
   role: z.enum(["USER", "ADMIN"]).optional(),
   status: z.enum(["ACTIVE", "SUSPENDED"]).optional(),
+  persistentSession: z.boolean().optional(),
+  revokeSessions: z.literal(true).optional(),
 }).refine((value) => Object.keys(value).length > 0, "Debes enviar un cambio");
 
 function normalizeError(error: unknown) {
@@ -53,7 +55,9 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
         ...(email ? { email } : {}),
         ...(input.role ? { role: input.role } : {}),
         ...(input.status ? { status: input.status } : {}),
+        ...(input.persistentSession !== undefined ? { persistentSession: input.persistentSession } : {}),
         ...(input.password ? { passwordHash: await hashPassword(input.password) } : {}),
+        ...(input.revokeSessions || input.password || input.status === "SUSPENDED" ? { sessionVersion: { increment: 1 } } : {}),
       },
       select: adminUserSelect,
     });

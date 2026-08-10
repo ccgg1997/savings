@@ -12,6 +12,10 @@ const secretConfigured = Boolean(process.env.NEXTAUTH_SECRET);
 const credentialsConfigured = secretConfigured && isDatabaseConfigured;
 const adminEmails = new Set((process.env.ADMIN_EMAILS ?? "").split(",").map((email) => email.trim().toLowerCase()).filter(Boolean));
 const credentialsSchema = z.object({ email: z.string().trim().email(), password: z.string().min(1).max(128) });
+const STANDARD_SESSION_MAX_AGE_MS = 8 * 60 * 60 * 1000;
+// Browsers can cap persistent cookies. This long rolling envelope keeps an
+// installed dashboard signed in while server policy still controls access.
+const SESSION_COOKIE_MAX_AGE_SECONDS = 400 * 24 * 60 * 60;
 
 const providers: NextAuthOptions["providers"] = [
   CredentialsProvider({
@@ -64,7 +68,8 @@ export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
   secret: process.env.NEXTAUTH_SECRET,
   providers,
-  session: { strategy: "jwt", maxAge: 60 * 60 * 8 },
+  session: { strategy: "jwt", maxAge: SESSION_COOKIE_MAX_AGE_SECONDS },
+  jwt: { maxAge: SESSION_COOKIE_MAX_AGE_SECONDS },
   pages: { signIn: "/login", error: "/login" },
   logger: {
     error(code, metadata) {
@@ -113,7 +118,15 @@ export const authOptions: NextAuthOptions = {
       }
     },
     async jwt({ token, user }) {
-      if (user?.id) token.sub = user.id;
+      if (user?.id) {
+        token.sub = user.id;
+        const dbUser = await prisma.user.findUnique({
+          where: { id: user.id },
+          select: { sessionVersion: true },
+        });
+        token.sessionVersion = dbUser?.sessionVersion ?? 0;
+        token.sessionStartedAt = Date.now();
+      }
       return token;
     },
     async session({ session, token }) {
@@ -122,11 +135,23 @@ export const authOptions: NextAuthOptions = {
       try {
         const dbUser = await prisma.user.findUnique({
           where: { id: token.sub },
-          select: { id: true, name: true, email: true, image: true, role: true, status: true },
+          select: { id: true, name: true, email: true, image: true, role: true, status: true, persistentSession: true, sessionVersion: true },
         });
+        const sessionStartedAt = typeof token.sessionStartedAt === "number"
+          ? token.sessionStartedAt
+          : typeof token.iat === "number" ? token.iat * 1000 : 0;
+        const sessionRevoked = Boolean(dbUser) && (token.sessionVersion ?? 0) !== dbUser!.sessionVersion;
+        const standardSessionExpired = Boolean(dbUser)
+          && !dbUser!.persistentSession
+          && (!sessionStartedAt || Date.now() - sessionStartedAt >= STANDARD_SESSION_MAX_AGE_MS);
         session.user.id = token.sub;
         session.user.role = dbUser?.role ?? "USER";
         session.user.status = dbUser?.status ?? "SUSPENDED";
+        session.user.persistentSession = dbUser?.persistentSession ?? false;
+        session.user.sessionValid = Boolean(dbUser)
+          && dbUser!.status === "ACTIVE"
+          && !sessionRevoked
+          && !standardSessionExpired;
         if (dbUser) {
           session.user.name = dbUser.name;
           session.user.email = dbUser.email;

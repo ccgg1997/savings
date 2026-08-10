@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
   const session = await getCurrentSession();
-  if (!session?.user || session.user.status !== "ACTIVE") redirect("/login");
+  if (!session?.user || session.user.status !== "ACTIVE" || !session.user.sessionValid) redirect("/login");
 
   let data;
   try { data = await getDashboardData(); }

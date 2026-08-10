@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, KeyRound, Palette, Pencil, Plus, Save, Shield, Trash2, UserCheck, Users, UserX, X } from "lucide-react";
+import { Check, Clock3, KeyRound, LogOut, Palette, Pencil, Plus, Save, Shield, Trash2, UserCheck, Users, UserX, X } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { captureClientError, notifySuccess } from "@/lib/client-errors";
 import type { AppSettingsData } from "@/lib/settings";
@@ -13,14 +13,15 @@ type AdminUser = {
   image: string | null;
   role: "USER" | "ADMIN";
   status: "ACTIVE" | "SUSPENDED";
+  persistentSession: boolean;
   hasPassword: boolean;
   providers: string[];
   createdAt: string | Date;
   updatedAt: string | Date;
 };
 
-type UserDraft = { name: string; email: string; password: string; role: "USER" | "ADMIN"; status: "ACTIVE" | "SUSPENDED" };
-const emptyUser: UserDraft = { name: "", email: "", password: "", role: "USER", status: "ACTIVE" };
+type UserDraft = { name: string; email: string; password: string; role: "USER" | "ADMIN"; status: "ACTIVE" | "SUSPENDED"; persistentSession: boolean };
+const emptyUser: UserDraft = { name: "", email: "", password: "", role: "USER", status: "ACTIVE", persistentSession: false };
 const accents = [
   { value: "MINT", label: "Menta", color: "#287d63" },
   { value: "BLUE", label: "Azul", color: "#2877c8" },
@@ -48,7 +49,7 @@ export function AdminView({ initialUsers, initialSettings, currentUserId, google
 
   function openEdit(user: AdminUser) {
     setEditingUser(user);
-    setDraft({ name: user.name ?? "", email: user.email ?? "", password: "", role: user.role, status: user.status });
+    setDraft({ name: user.name ?? "", email: user.email ?? "", password: "", role: user.role, status: user.status, persistentSession: user.persistentSession });
   }
 
   function closeEditor() {
@@ -73,7 +74,7 @@ export function AdminView({ initialUsers, initialSettings, currentUserId, google
     }
   }
 
-  async function updateAccess(user: AdminUser, field: "role" | "status", value: string) {
+  async function updateAccess(user: AdminUser, field: "role" | "status" | "persistentSession", value: string | boolean) {
     setUpdatingId(user.id);
     try {
       const response = await apiFetch<{ user: AdminUser }>(`/api/admin/users/${user.id}`, { method: "PATCH", body: JSON.stringify({ [field]: value }) });
@@ -81,6 +82,20 @@ export function AdminView({ initialUsers, initialSettings, currentUserId, google
       notifySuccess("Acceso actualizado.");
     } catch (error) {
       captureClientError(error, { action: "update_user_access", userId: user.id });
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
+  async function revokeSessions(user: AdminUser) {
+    if (!window.confirm(`¿Cerrar ahora todas las sesiones de ${user.name ?? user.email}?`)) return;
+    setUpdatingId(user.id);
+    try {
+      const response = await apiFetch<{ user: AdminUser }>(`/api/admin/users/${user.id}`, { method: "PATCH", body: JSON.stringify({ revokeSessions: true }) });
+      setUsers((current) => current.map((item) => item.id === user.id ? response.user : item));
+      notifySuccess("Sesiones cerradas. Los tokens anteriores ya no son válidos.");
+    } catch (error) {
+      captureClientError(error, { action: "revoke_user_sessions", userId: user.id });
     } finally {
       setUpdatingId(null);
     }
@@ -125,15 +140,16 @@ export function AdminView({ initialUsers, initialSettings, currentUserId, google
         <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
           <div className="flex items-center justify-between border-b border-border px-4 py-3"><div><h2 className="text-sm font-bold text-card-foreground">Usuarios autorizados</h2><p className="mt-0.5 text-xs text-muted-foreground">{googleConfigured ? "Todo usuario activo puede entrar con Google desde el primer momento." : "Google aún no está configurado; una contraseña habilita el acceso local."}</p></div><span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-bold text-primary">{users.length}</span></div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[780px] text-left text-xs">
-              <thead><tr className="border-b border-border bg-muted/45 text-[10px] uppercase tracking-wide text-muted-foreground"><th className="px-4 py-2.5">Usuario</th><th className="py-2.5">Acceso</th><th className="py-2.5">Rol</th><th className="py-2.5">Estado</th><th className="px-4 py-2.5 text-right">Acciones</th></tr></thead>
+            <table className="w-full min-w-[940px] text-left text-xs">
+              <thead><tr className="border-b border-border bg-muted/45 text-[10px] uppercase tracking-wide text-muted-foreground"><th className="px-4 py-2.5">Usuario</th><th className="py-2.5">Acceso</th><th className="py-2.5">Rol</th><th className="py-2.5">Sesión</th><th className="py-2.5">Estado</th><th className="px-4 py-2.5 text-right">Acciones</th></tr></thead>
               <tbody>{users.map((user) => (
                 <tr key={user.id} className="border-b border-border/70 last:border-0">
                   <td className="px-4 py-3"><div className="flex items-center gap-3"><div className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted font-bold text-primary">{user.image ? <img src={user.image} alt="" className="size-full object-cover" /> : (user.name ?? user.email ?? "U").slice(0, 1).toUpperCase()}</div><div className="min-w-0"><p className="truncate font-semibold text-card-foreground">{user.name ?? "Sin nombre"}{user.id === currentUserId && <span className="ml-2 text-[10px] font-medium text-primary">Tú</span>}</p><p className="truncate text-muted-foreground">{user.email ?? "Sin correo"}</p></div></div></td>
                   <td><div className="flex flex-wrap gap-1">{googleConfigured && user.status === "ACTIVE" && <span className="rounded-md bg-blue-50 px-2 py-1 text-[10px] font-semibold text-blue-700">{user.providers.includes("google") ? "Google vinculado" : "Google habilitado"}</span>}{user.hasPassword && <span className="rounded-md bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-700">Contraseña</span>}{!googleConfigured && !user.hasPassword && <span className="rounded-md bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-700">Sin método de acceso</span>}</div></td>
                   <td><select aria-label={`Rol de ${user.name ?? user.email}`} value={user.role} disabled={updatingId === user.id} onChange={(event) => updateAccess(user, "role", event.target.value)} className="rounded-lg border border-border bg-card px-2 py-1.5 font-semibold text-card-foreground disabled:opacity-50"><option value="USER">Usuario</option><option value="ADMIN">Admin</option></select></td>
+                  <td><select aria-label={`Sesión de ${user.name ?? user.email}`} value={user.persistentSession ? "PERSISTENT" : "STANDARD"} disabled={updatingId === user.id} onChange={(event) => updateAccess(user, "persistentSession", event.target.value === "PERSISTENT")} className={`rounded-lg border px-2 py-1.5 font-semibold disabled:opacity-50 ${user.persistentSession ? "border-violet-200 bg-violet-50 text-violet-700" : "border-border bg-card text-card-foreground"}`}><option value="STANDARD">8 horas</option><option value="PERSISTENT">Persistente</option></select></td>
                   <td><select aria-label={`Estado de ${user.name ?? user.email}`} value={user.status} disabled={updatingId === user.id} onChange={(event) => updateAccess(user, "status", event.target.value)} className={`rounded-lg border px-2 py-1.5 font-semibold disabled:opacity-50 ${user.status === "ACTIVE" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-red-200 bg-red-50 text-red-700"}`}><option value="ACTIVE">Activo</option><option value="SUSPENDED">Suspendido</option></select></td>
-                  <td className="px-4"><div className="flex justify-end gap-1"><button type="button" onClick={() => openEdit(user)} className="rounded-lg p-2 text-muted-foreground transition hover:bg-muted hover:text-foreground" title={`Editar ${user.name ?? user.email}`}><Pencil className="size-4" aria-hidden="true" /><span className="sr-only">Editar usuario</span></button><button type="button" disabled={user.id === currentUserId} onClick={() => setDeletingUser(user)} className="rounded-lg p-2 text-muted-foreground transition hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-35" title="Eliminar usuario"><Trash2 className="size-4" aria-hidden="true" /><span className="sr-only">Eliminar usuario</span></button></div></td>
+                  <td className="px-4"><div className="flex justify-end gap-1"><button type="button" disabled={updatingId === user.id} onClick={() => revokeSessions(user)} className="rounded-lg p-2 text-muted-foreground transition hover:bg-amber-50 hover:text-amber-700 disabled:cursor-not-allowed disabled:opacity-35" title="Cerrar todas las sesiones"><LogOut className="size-4" aria-hidden="true" /><span className="sr-only">Cerrar todas las sesiones</span></button><button type="button" onClick={() => openEdit(user)} className="rounded-lg p-2 text-muted-foreground transition hover:bg-muted hover:text-foreground" title={`Editar ${user.name ?? user.email}`}><Pencil className="size-4" aria-hidden="true" /><span className="sr-only">Editar usuario</span></button><button type="button" disabled={user.id === currentUserId} onClick={() => setDeletingUser(user)} className="rounded-lg p-2 text-muted-foreground transition hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-35" title="Eliminar usuario"><Trash2 className="size-4" aria-hidden="true" /><span className="sr-only">Eliminar usuario</span></button></div></td>
                 </tr>
               ))}</tbody>
             </table>
@@ -153,7 +169,7 @@ export function AdminView({ initialUsers, initialSettings, currentUserId, google
         </section>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3"><Stat icon={Shield} value={users.filter((user) => user.role === "ADMIN").length} label="Administradores" /><Stat icon={UserCheck} value={users.filter((user) => user.status === "ACTIVE").length} label="Usuarios activos" /><Stat icon={UserX} value={users.filter((user) => user.status === "SUSPENDED").length} label="Usuarios suspendidos" /></div>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><Stat icon={Shield} value={users.filter((user) => user.role === "ADMIN").length} label="Administradores" /><Stat icon={UserCheck} value={users.filter((user) => user.status === "ACTIVE").length} label="Usuarios activos" /><Stat icon={Clock3} value={users.filter((user) => user.persistentSession).length} label="Sesiones persistentes" /><Stat icon={UserX} value={users.filter((user) => user.status === "SUSPENDED").length} label="Usuarios suspendidos" /></div>
 
       {editingUser !== undefined && <UserEditor mode={editingUser ? "edit" : "create"} draft={draft} setDraft={setDraft} onClose={closeEditor} onSubmit={submitUser} saving={savingUser} googleConfigured={googleConfigured} />}
       {deletingUser && <DeleteDialog user={deletingUser} deleting={deleting} onCancel={() => !deleting && setDeletingUser(null)} onConfirm={confirmDelete} />}

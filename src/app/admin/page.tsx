@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 
 export default async function AdminPage() {
   const session = await getCurrentSession();
-  if (!session?.user || session.user.status !== "ACTIVE") redirect("/login");
+  if (!session?.user || session.user.status !== "ACTIVE" || !session.user.sessionValid) redirect("/login");
   if (session.user.role !== "ADMIN") redirect("/dashboard");
   const settings = await getAppSettings();
   let users: ReturnType<typeof publicAdminUser>[] = [];

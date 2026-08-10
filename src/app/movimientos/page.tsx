@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 export default async function MovementsPage({ searchParams }: { searchParams: Promise<{ division?: string; category?: string; type?: string }> }) {
   const session = await getCurrentSession();
-  if (!session?.user || session.user.status !== "ACTIVE") redirect("/login");
+  if (!session?.user || session.user.status !== "ACTIVE" || !session.user.sessionValid) redirect("/login");
   const { division, category, type } = await searchParams;
   const initialType = type === "income" || type === "expense" ? type : undefined;
 
