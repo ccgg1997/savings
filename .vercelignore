@@ -2,6 +2,8 @@
 .env.*
 !.env.example
 .agents/
+.playwright-cli/
+output/playwright/
 skills-lock.json
 node_modules/
 .next/
