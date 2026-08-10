@@ -3,19 +3,45 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
-import { ChevronRight, LayoutDashboard, LogOut, ReceiptText, ShieldCheck, UsersRound, WalletCards } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ChevronRight, LayoutDashboard, LogOut, Menu, ReceiptText, ShieldCheck, UsersRound, WalletCards, X } from "lucide-react";
 import type { Session } from "next-auth";
 import { captureClientError, notifyError } from "@/lib/client-errors";
 import type { AppSettingsData } from "@/lib/settings";
 
 export function AppShell({ children, session, settings }: { children: React.ReactNode; session: Session; settings: AppSettingsData }) {
   const pathname = usePathname();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const mobileMenuRef = useRef<HTMLElement>(null);
   const isAdmin = session.user.role === "ADMIN";
   const navItems = [
     { href: "/dashboard", label: "Resumen", description: "Tu panorama financiero", icon: LayoutDashboard },
     { href: "/movimientos", label: "Movimientos", description: "Ingresos, gastos y filtros", icon: ReceiptText },
   ];
   if (isAdmin) navItems.push({ href: "/admin", label: "Administración", description: "Usuarios y apariencia", icon: UsersRound });
+
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+
+    function handlePointerDown(event: PointerEvent) {
+      if (!mobileMenuRef.current?.contains(event.target as Node)) setMobileMenuOpen(false);
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setMobileMenuOpen(false);
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [mobileMenuOpen]);
 
   async function handleSignOut() {
     try {
@@ -99,7 +125,7 @@ export function AppShell({ children, session, settings }: { children: React.Reac
         </div>
       </aside>
 
-      <header className="sticky top-0 z-20 border-b border-border/80 bg-card/90 backdrop-blur-xl lg:hidden">
+      <header ref={mobileMenuRef} className="sticky top-0 z-20 border-b border-border/80 bg-card/90 backdrop-blur-xl lg:hidden">
         <div className="flex h-16 items-center justify-between gap-3 px-4 sm:px-6">
           <Link href="/dashboard" className="flex min-w-0 items-center gap-2.5">
             <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-surface-dark text-surface-dark-foreground">
@@ -107,27 +133,63 @@ export function AppShell({ children, session, settings }: { children: React.Reac
             </span>
             <span className="truncate text-sm font-bold text-card-foreground">{settings.brandName}</span>
           </Link>
-          <div className="flex items-center gap-1">
-            <nav className="flex items-center" aria-label="Navegación principal">
+          <button
+            type="button"
+            aria-expanded={mobileMenuOpen}
+            aria-controls="mobile-navigation"
+            aria-label={mobileMenuOpen ? "Cerrar menú" : "Abrir menú"}
+            onClick={() => setMobileMenuOpen((open) => !open)}
+            className={`flex size-10 shrink-0 items-center justify-center rounded-xl transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${mobileMenuOpen ? "bg-secondary text-secondary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+          >
+            {mobileMenuOpen ? <X className="size-5" aria-hidden="true" /> : <Menu className="size-5" aria-hidden="true" />}
+          </button>
+        </div>
+
+        {mobileMenuOpen && (
+          <div id="mobile-navigation" className="absolute inset-x-0 top-full border-b border-border bg-card p-3 shadow-xl shadow-foreground/10 sm:px-6">
+            <nav className="space-y-1" aria-label="Navegación principal">
               {navItems.map((item) => {
                 const Icon = item.icon;
                 const active = pathname === item.href;
                 return (
-                  <Link key={item.href} href={item.href} aria-current={active ? "page" : undefined} className={`flex size-9 items-center justify-center rounded-lg transition ${active ? "bg-secondary text-secondary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`} title={item.label}>
-                    <Icon className="size-4" aria-hidden="true" />
-                    <span className="sr-only">{item.label}</span>
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    aria-current={active ? "page" : undefined}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`flex items-center gap-3 rounded-xl px-3 py-2.5 transition ${active ? "bg-secondary text-secondary-foreground" : "text-card-foreground hover:bg-muted"}`}
+                  >
+                    <span className={`flex size-9 shrink-0 items-center justify-center rounded-lg ${active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                      <Icon className="size-4" aria-hidden="true" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-semibold">{item.label}</span>
+                      <span className={`mt-0.5 block truncate text-xs ${active ? "text-secondary-foreground/70" : "text-muted-foreground"}`}>{item.description}</span>
+                    </span>
+                    <ChevronRight className="size-4 text-muted-foreground" aria-hidden="true" />
                   </Link>
                 );
               })}
             </nav>
-            <span className="mx-1 h-6 w-px bg-border" />
-            <UserAvatar image={session.user.image} initial={userInitial} compact />
-            <button type="button" onClick={handleSignOut} className="flex size-9 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-muted hover:text-foreground" title="Cerrar sesión">
-              <LogOut className="size-4" aria-hidden="true" />
-              <span className="sr-only">Cerrar sesión</span>
-            </button>
+
+            <div className="mt-3 flex items-center gap-3 border-t border-border px-3 pt-3">
+              <UserAvatar image={session.user.image} initial={userInitial} />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-card-foreground">{userName}</p>
+                <p className="truncate text-xs text-muted-foreground">{isAdmin ? "Administrador" : session.user.email}</p>
+              </div>
+              <button
+                type="button"
+                onClick={handleSignOut}
+                className="flex size-10 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                title="Cerrar sesión"
+              >
+                <LogOut className="size-4" aria-hidden="true" />
+                <span className="sr-only">Cerrar sesión</span>
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </header>
 
       <div className="lg:pl-64">
