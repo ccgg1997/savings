@@ -30,6 +30,7 @@ model User {
   email         String?     @unique
   emailVerified DateTime?
   image         String?
+  passwordHash  String?
   role          Role        @default(USER)
   status        UserStatus  @default(ACTIVE)
   createdAt     DateTime    @default(now())
@@ -38,6 +39,8 @@ model User {
   sessions      Session[]
   errorLogs     ErrorLog[]
   settings      AppSettings[]
+
+  @@index([role, status])
 }
 
 model Account {
@@ -102,4 +105,3 @@ model ErrorLog {
   @@index([createdAt])
   @@index([source])
 }
-

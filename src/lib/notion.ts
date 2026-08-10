@@ -2,7 +2,7 @@ import { Client } from "@notionhq/client";
 import { AppError } from "@/lib/errors";
 
 type NotionProperty = Record<string, unknown>;
-type NotionRow = { properties: Record<string, NotionProperty>; created_time: string };
+type NotionRow = { id: string; properties: Record<string, NotionProperty>; created_time: string };
 
 export type DashboardData = {
   source: "notion" | "demo";
@@ -11,6 +11,7 @@ export type DashboardData = {
   expenseCategories: Array<{ label: string; amount: number; percentage: number; color: string }>;
   incomeSources: Array<{ label: string; amount: number; percentage: number }>;
   monthlyTrend: Array<{ label: string; income: number; expenses: number }>;
+  recentTransactions: Array<{ id: string; type: "income" | "expense"; description: string; date: string; amount: number; account: string; category: string }>;
   budget: number | null;
   updatedAt: string;
 };
@@ -75,8 +76,10 @@ async function queryDatabase(databaseId: string): Promise<NotionRow[]> {
 function rowToItem(row: NotionRow, kind: "income" | "expense") {
   const amount = Math.abs(numberValue(propertyByNames(row.properties, ["Monto", "Amount", "Valor", "Total"])));
   const label = textValue(propertyByNames(row.properties, kind === "income" ? ["Fuente", "Source", "Nombre", "Concepto"] : ["Categoría", "Categoria", "Category", "Tipo", "Concepto"])) ?? "Otros";
+  const description = textValue(propertyByNames(row.properties, ["Descripción", "Descripcion", "Description", "Nombre", "Concepto", "Detalle"])) ?? label;
+  const account = textValue(propertyByNames(row.properties, ["Cuenta", "Account", "Banco", "Medio", "Método", "Metodo"])) ?? "Sin cuenta";
   const date = dateValue(propertyByNames(row.properties, ["Fecha", "Date", "Día", "Dia"]), row.created_time);
-  return { amount, label, date };
+  return { id: row.id, kind, amount, label, description, account, date };
 }
 
 function monthKey(date: string) {
@@ -115,6 +118,11 @@ export function createDemoDashboardData(): DashboardData {
       { label: "May", income: 2700000, expenses: 1350000 },
       { label: "Jun", income: 3050000, expenses: 1750000 },
     ],
+    recentTransactions: [
+      { id: "demo-income", type: "income", description: "Salario", date: "2024-06-01", amount: 2800000, account: "Bancolombia", category: "Empleo" },
+      { id: "demo-market", type: "expense", description: "Supermercado", date: "2024-06-02", amount: 320000, account: "Bancolombia", category: "Alimentación" },
+      { id: "demo-transport", type: "expense", description: "Transporte", date: "2024-06-03", amount: 120000, account: "Nequi", category: "Transporte" },
+    ],
     budget: 2400000,
     updatedAt: new Date().toISOString(),
   };
@@ -144,14 +152,29 @@ export async function getDashboardData(): Promise<DashboardData> {
   const categoryGroups = grouped(expenses);
   const sourceGroups = grouped(incomes);
   const trendMap = new Map<string, { income: number; expenses: number }>();
-  [...incomes, ...expenses].forEach((item) => {
+  incomes.forEach((item) => {
     const key = monthKey(item.date);
     const current = trendMap.get(key) ?? { income: 0, expenses: 0 };
-    if (incomes.includes(item)) current.income += item.amount;
-    else current.expenses += item.amount;
+    current.income += item.amount;
     trendMap.set(key, current);
   });
-  const trend = [...trendMap.entries()].sort(([a], [b]) => a.localeCompare(b)).slice(-6);
+  expenses.forEach((item) => {
+    const key = monthKey(item.date);
+    const current = trendMap.get(key) ?? { income: 0, expenses: 0 };
+    current.expenses += item.amount;
+    trendMap.set(key, current);
+  });
+  const validDates = [...incomes, ...expenses].map((item) => new Date(item.date).getTime()).filter(Number.isFinite);
+  const referenceDate = new Date(validDates.length ? Math.max(...validDates) : Date.now());
+  const trend = Array.from({ length: 6 }, (_, index) => {
+    const date = new Date(Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth() - (5 - index), 1));
+    const key = date.toISOString().slice(0, 7);
+    return [key, trendMap.get(key) ?? { income: 0, expenses: 0 }] as const;
+  });
+  const recentTransactions = [...incomes, ...expenses]
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .slice(0, 5)
+    .map((item) => ({ id: item.id, type: item.kind, description: item.description, date: item.date, amount: item.amount, account: item.account, category: item.label }));
 
   return {
     source: "notion",
@@ -160,8 +183,8 @@ export async function getDashboardData(): Promise<DashboardData> {
     expenseCategories: categoryGroups.map(([label, amount], index) => ({ label, amount, percentage: totalExpenses ? (amount / totalExpenses) * 100 : 0, color: colors[index % colors.length] })),
     incomeSources: sourceGroups.map(([label, amount]) => ({ label, amount, percentage: totalIncome ? (amount / totalIncome) * 100 : 0 })),
     monthlyTrend: trend.map(([key, value]) => ({ label: monthLabel(key), ...value })),
+    recentTransactions,
     budget: null,
     updatedAt: new Date().toISOString(),
   };
 }
-

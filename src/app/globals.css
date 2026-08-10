@@ -12,8 +12,17 @@
   --ring: oklch(0.54 0.14 165);
   --primary: oklch(0.44 0.12 165);
   --primary-foreground: oklch(0.99 0.01 160);
-  --radius: 1rem;
+  --surface-dark: oklch(0.23 0.035 255);
+  --surface-dark-foreground: oklch(0.98 0.005 255);
+  --positive: oklch(0.59 0.16 155);
+  --negative: oklch(0.62 0.2 25);
+  --warning: oklch(0.72 0.16 70);
+  --radius: 0.75rem;
 }
+
+[data-accent="blue"] { --primary: oklch(0.53 0.16 250); --ring: oklch(0.61 0.14 250); }
+[data-accent="violet"] { --primary: oklch(0.52 0.17 295); --ring: oklch(0.62 0.14 295); }
+[data-accent="amber"] { --primary: oklch(0.57 0.14 65); --ring: oklch(0.67 0.13 65); }
 
 @theme inline {
   --color-background: var(--background);
@@ -26,6 +35,11 @@
   --color-ring: var(--ring);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-surface-dark: var(--surface-dark);
+  --color-surface-dark-foreground: var(--surface-dark-foreground);
+  --color-positive: var(--positive);
+  --color-negative: var(--negative);
+  --color-warning: var(--warning);
   --radius-card: var(--radius);
 }
 
@@ -37,4 +51,3 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .alertify-notifier .ajs-message { border-radius: 0.75rem; box-shadow: 0 10px 30px rgb(23 57 48 / 15%); }
 .alertify-notifier .ajs-error { background: #b83f4d; }
 .alertify-notifier .ajs-success { background: #287d63; }
-

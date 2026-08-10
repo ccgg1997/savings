@@ -1,41 +1,60 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowDownRight, ArrowUpRight, CalendarDays, ChevronDown, CircleDollarSign, Download, RefreshCw, TrendingUp } from "lucide-react";
+import { ArrowDown, ArrowUp, CalendarDays, RefreshCw } from "lucide-react";
 import type { DashboardData } from "@/lib/notion";
 import type { AppSettingsData } from "@/lib/settings";
 import { apiFetch } from "@/lib/api";
-import { captureClientError, notifyError } from "@/lib/client-errors";
+import { captureClientError, notifySuccess } from "@/lib/client-errors";
 
 const currency = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
-const compactCurrency = new Intl.NumberFormat("es-CO", { notation: "compact", maximumFractionDigits: 1 });
+const shortCurrency = new Intl.NumberFormat("es-CO", { notation: "compact", maximumFractionDigits: 1 });
+const dateFormatter = new Intl.DateTimeFormat("es-CO", { day: "2-digit", month: "2-digit", year: "numeric" });
 
 function money(value: number) { return currency.format(value); }
-function compact(value: number) { return `$${compactCurrency.format(value)}`; }
+function compact(value: number) { return `$${shortCurrency.format(value)}`; }
+function percentChange(current: number, previous: number) { return previous ? ((current - previous) / Math.abs(previous)) * 100 : null; }
 
-function MetricCard({ label, value, helper, icon, tone }: { label: string; value: string; helper: string; icon: React.ReactNode; tone: "blue" | "red" | "green" | "purple" }) {
-  const styles = { blue: "bg-blue-50 text-blue-600", red: "bg-red-50 text-red-600", green: "bg-emerald-50 text-emerald-600", purple: "bg-violet-50 text-violet-600" };
-  return <article className="rounded-2xl border border-border bg-card p-4 shadow-[0_4px_16px_rgb(17_63_50/5%)] sm:p-5"><div className="flex items-start justify-between gap-3"><p className="text-xs font-semibold text-muted-foreground">{label}</p><span className={`flex size-8 items-center justify-center rounded-lg ${styles[tone]}`}>{icon}</span></div><p className="mt-4 text-2xl font-bold tracking-tight text-card-foreground sm:text-[1.7rem]">{value}</p><p className="mt-2 text-[11px] text-muted-foreground">{helper}</p></article>;
+function MetricCard({ label, value, delta, inverse = false }: { label: string; value: string; delta: number | null; inverse?: boolean }) {
+  const positive = delta !== null && (inverse ? delta <= 0 : delta >= 0);
+  return <article className="flex min-w-0 flex-col justify-between rounded-xl border border-slate-700/70 bg-surface-dark px-4 py-3 text-surface-dark-foreground shadow-sm"><p className="truncate text-[10px] font-semibold text-white/65">{label}</p><p className="truncate text-xl font-bold tracking-tight xl:text-2xl">{value}</p><p className={`flex items-center gap-1 text-[10px] font-semibold ${delta === null ? "text-white/55" : positive ? "text-emerald-300" : "text-red-300"}`}>{delta === null ? "Periodo seleccionado" : <>{positive ? <ArrowUp className="size-3" aria-hidden="true" /> : <ArrowDown className="size-3" aria-hidden="true" />}{Math.abs(delta).toFixed(1)}% vs. mes anterior</>}</p></article>;
 }
 
-function Card({ title, children, className = "" }: { title: string; children: React.ReactNode; className?: string }) {
-  return <section className={`rounded-2xl border border-border bg-card p-4 shadow-[0_4px_16px_rgb(17_63_50/5%)] sm:p-5 ${className}`}><div className="mb-4 flex items-center justify-between"><h2 className="text-sm font-bold text-card-foreground">{title}</h2><button type="button" className="rounded-md p-1 text-muted-foreground transition hover:bg-muted hover:text-card-foreground" title={`Más opciones para ${title}`}><span className="sr-only">Más opciones</span><ChevronDown className="size-4" aria-hidden="true" /></button></div>{children}</section>;
+function Panel({ title, children, className = "" }: { title: string; children: React.ReactNode; className?: string }) {
+  return <section className={`min-h-0 overflow-hidden rounded-xl border border-border bg-card p-3 shadow-sm ${className}`}><h2 className="mb-2 text-xs font-bold text-card-foreground">{title}</h2>{children}</section>;
 }
 
-function Donut({ data }: { data: DashboardData["expenseCategories"] }) {
-  let offset = 0;
-  const gradient = data.map((entry) => { const start = offset; offset += entry.percentage; return `${entry.color} ${start}% ${offset}%`; }).join(", ");
-  return <div className="flex flex-col items-center gap-6 sm:flex-row"><div className="relative size-40 shrink-0 rounded-full" style={{ background: `conic-gradient(${gradient || "#cbd5e1 0 100%"})` }}><div className="absolute inset-[28px] flex flex-col items-center justify-center rounded-full bg-card"><span className="text-xs font-bold text-card-foreground">{compact(data.reduce((sum, item) => sum + item.amount, 0))}</span><span className="text-[10px] text-muted-foreground">Total gastos</span></div></div><div className="w-full space-y-3">{data.map((entry) => <div key={entry.label} className="flex items-center justify-between gap-3 text-xs"><span className="flex min-w-0 items-center gap-2 text-muted-foreground"><span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: entry.color }} /> <span className="truncate">{entry.label}</span></span><span className="shrink-0 font-semibold text-card-foreground">{compact(entry.amount)} <span className="font-normal text-muted-foreground">({Math.round(entry.percentage)}%)</span></span></div>)}</div></div>;
+function CashFlowChart({ data }: { data: DashboardData["monthlyTrend"] }) {
+  const max = Math.max(...data.flatMap((item) => [item.income, item.expenses, item.income - item.expenses]), 1);
+  const width = 620;
+  const height = 168;
+  const top = 12;
+  const bottom = 142;
+  const chartHeight = bottom - top;
+  const groupWidth = 540 / Math.max(data.length, 1);
+  const barWidth = Math.min(22, groupWidth * 0.23);
+  const x = (index: number) => 62 + groupWidth * index + groupWidth / 2;
+  const y = (value: number) => bottom - (Math.max(value, 0) / max) * chartHeight;
+  const savingsPoints = data.map((item, index) => `${x(index)},${y(item.income - item.expenses)}`).join(" ");
+
+  return <div className="h-[calc(100%-1.25rem)] min-h-32"><div className="mb-1 flex justify-center gap-4 text-[9px] text-muted-foreground"><Legend color="bg-emerald-500" label="Ingresos" /><Legend color="bg-red-400" label="Gastos" /><Legend color="bg-amber-500" label="Ahorro" /></div><svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="h-[calc(100%-1rem)] min-h-28 w-full" role="img" aria-label="Flujo de efectivo de los últimos seis meses">{[0, 0.33, 0.66, 1].map((ratio) => { const lineY = bottom - chartHeight * ratio; return <g key={ratio}><line x1="52" x2="610" y1={lineY} y2={lineY} stroke="currentColor" className="text-border" strokeDasharray="3 4" vectorEffect="non-scaling-stroke" /><text x="2" y={lineY + 3} className="fill-muted-foreground text-[9px]">{compact(max * ratio)}</text></g>; })}{data.map((item, index) => <g key={`${item.label}-${index}`}><rect x={x(index) - barWidth - 1} y={y(item.income)} width={barWidth} height={bottom - y(item.income)} rx="2" className="fill-emerald-500/75" /><rect x={x(index) + 1} y={y(item.expenses)} width={barWidth} height={bottom - y(item.expenses)} rx="2" className="fill-red-400/75" /><text x={x(index)} y="162" textAnchor="middle" className="fill-muted-foreground text-[9px] capitalize">{item.label}</text></g>)}<polyline points={savingsPoints} fill="none" className="stroke-amber-500" strokeWidth="2" vectorEffect="non-scaling-stroke" />{data.map((item, index) => <circle key={`saving-${index}`} cx={x(index)} cy={y(item.income - item.expenses)} r="2.7" className="fill-amber-500" />)}</svg></div>;
 }
 
-function TrendChart({ data }: { data: DashboardData["monthlyTrend"] }) {
-  const max = Math.max(...data.flatMap((entry) => [entry.income, entry.expenses]), 1);
-  const points = (key: "income" | "expenses") => data.map((entry, index) => `${data.length === 1 ? 50 : (index / (data.length - 1)) * 100},${100 - (entry[key] / max) * 84}`).join(" ");
-  return <div><div className="relative h-52 overflow-hidden rounded-xl bg-[linear-gradient(to_bottom,rgba(77,168,122,0.08),transparent)]"><div className="absolute inset-x-0 top-1/4 border-t border-dashed border-border" /><div className="absolute inset-x-0 top-2/4 border-t border-dashed border-border" /><div className="absolute inset-x-0 top-3/4 border-t border-dashed border-border" /><svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 size-full px-2 py-3"><polyline points={points("income")} fill="none" stroke="#31956b" strokeWidth="1.5" vectorEffect="non-scaling-stroke" /><polyline points={points("expenses")} fill="none" stroke="#e24f4f" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />{data.map((entry, index) => <g key={entry.label}><circle cx={data.length === 1 ? 50 : (index / (data.length - 1)) * 100} cy={100 - (entry.income / max) * 84} r="1.8" fill="#31956b" vectorEffect="non-scaling-stroke" /><circle cx={data.length === 1 ? 50 : (index / (data.length - 1)) * 100} cy={100 - (entry.expenses / max) * 84} r="1.8" fill="#e24f4f" vectorEffect="non-scaling-stroke" /></g>)}</svg><div className="absolute bottom-2 left-0 right-0 flex justify-between px-3 text-[10px] text-muted-foreground">{data.map((entry) => <span key={entry.label}>{entry.label}</span>)}</div></div><div className="mt-3 flex justify-center gap-5 text-[11px] text-muted-foreground"><span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-[#31956b]" />Ingresos</span><span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-[#e24f4f]" />Gastos</span></div></div>;
+function Legend({ color, label }: { color: string; label: string }) {
+  return <span className="flex items-center gap-1.5"><span className={`size-2 rounded-sm ${color}`} />{label}</span>;
 }
 
-function SimpleTable({ headers, rows, total }: { headers: string[]; rows: Array<string[]>; total: string[] }) {
-  return <div className="overflow-x-auto"><table className="w-full min-w-[360px] text-left text-xs"><thead><tr className="border-b border-border text-[10px] uppercase tracking-wide text-muted-foreground">{headers.map((header) => <th key={header} className="pb-3 font-semibold">{header}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={row.join("-")} className="border-b border-border/70 last:border-0"><td className="py-3 font-medium text-card-foreground">{row[0]}</td><td className="py-3 text-right font-semibold text-card-foreground">{row[1]}</td><td className="py-3 text-right text-muted-foreground">{row[2]}</td></tr>)}</tbody><tfoot><tr><td className="pt-3 font-bold text-card-foreground">Total</td>{total.slice(1).map((value) => <td key={value} className="pt-3 text-right font-bold text-card-foreground">{value}</td>)}</tr></tfoot></table></div>;
+function ExpenseDivision({ categories }: { categories: DashboardData["expenseCategories"] }) {
+  const visible = categories.slice(0, 6);
+  return <div className="space-y-2.5">{visible.map((item) => <div key={item.label} className="grid grid-cols-[72px_1fr_32px] items-center gap-2 text-[10px]"><span className="truncate text-muted-foreground">{item.label}</span><span className="h-2 overflow-hidden rounded-sm bg-muted"><span className="block h-full rounded-sm" style={{ width: `${Math.max(item.percentage, 2)}%`, backgroundColor: item.color }} /></span><span className="text-right font-bold text-card-foreground">{Math.round(item.percentage)}%</span></div>)}</div>;
+}
+
+function CategoryTreemap({ categories }: { categories: DashboardData["expenseCategories"] }) {
+  return <div className="flex h-[calc(100%-1.25rem)] min-h-14 overflow-hidden rounded-lg">{categories.slice(0, 6).map((item) => <div key={item.label} className="flex min-w-16 flex-col justify-center border-r border-white/30 px-2 text-white last:border-0" style={{ flexBasis: `${Math.max(item.percentage, 9)}%`, backgroundColor: item.color }}><span className="truncate text-[10px] font-semibold">{item.label}</span><span className="truncate text-xs font-bold">{compact(item.amount)}</span><span className="text-[9px] text-white/85">{Math.round(item.percentage)}%</span></div>)}</div>;
+}
+
+function Transactions({ rows }: { rows: DashboardData["recentTransactions"] }) {
+  return <div className="h-[calc(100%-1.25rem)] overflow-hidden"><table className="w-full table-fixed text-left text-[10px]"><thead><tr className="border-b border-border bg-muted/45 text-[9px] uppercase tracking-wide text-muted-foreground"><th className="w-[12%] px-2 py-1.5">Tipo</th><th className="w-[25%] py-1.5">Descripción</th><th className="w-[15%] py-1.5">Fecha</th><th className="w-[18%] py-1.5">Monto</th><th className="w-[15%] py-1.5">Cuenta</th><th className="w-[15%] py-1.5">Categoría</th></tr></thead><tbody>{rows.slice(0, 4).map((row) => <tr key={row.id} className="border-b border-border/65 last:border-0"><td className="px-2 py-1.5"><span className={`inline-flex items-center gap-1 font-semibold ${row.type === "income" ? "text-emerald-600" : "text-orange-600"}`}><span className={`size-1.5 rounded-full ${row.type === "income" ? "bg-emerald-500" : "bg-orange-500"}`} />{row.type === "income" ? "Ingreso" : "Gasto"}</span></td><td className="truncate py-1.5 font-medium text-card-foreground">{row.description}</td><td className="truncate py-1.5 text-muted-foreground">{dateFormatter.format(new Date(row.date))}</td><td className={`truncate py-1.5 font-bold ${row.type === "income" ? "text-emerald-600" : "text-red-500"}`}>{row.type === "income" ? "+" : "−"}{money(row.amount)}</td><td className="truncate py-1.5 text-muted-foreground">{row.account}</td><td className="truncate py-1.5 text-muted-foreground">{row.category}</td></tr>)}</tbody></table>{rows.length === 0 && <p className="py-6 text-center text-xs text-muted-foreground">No hay transacciones para mostrar.</p>}</div>;
 }
 
 export function DashboardView({ initialData, settings }: { initialData: DashboardData; settings: AppSettingsData }) {
@@ -45,19 +64,30 @@ export function DashboardView({ initialData, settings }: { initialData: Dashboar
 
   async function refresh() {
     setRefreshing(true);
-    try { const next = await apiFetch<DashboardData>("/api/dashboard"); setData(next); setPeriod(next.period); }
-    catch (error) { captureClientError(error, { action: "refresh_dashboard" }); }
-    finally { setRefreshing(false); }
+    try {
+      const next = await apiFetch<DashboardData>("/api/dashboard");
+      setData(next);
+      setPeriod(next.period);
+      notifySuccess("Dashboard actualizado.");
+    } catch (error) {
+      captureClientError(error, { action: "refresh_dashboard" });
+    } finally {
+      setRefreshing(false);
+    }
   }
 
-  const categoryRows = data.expenseCategories.map((entry) => [entry.label, money(entry.amount), `${Math.round(entry.percentage)}%`]);
-  const incomeRows = data.incomeSources.map((entry) => [entry.label, money(entry.amount), `${Math.round(entry.percentage)}%`]);
-  return <div className="space-y-6">
-    <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><div className="flex items-center gap-2"><p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">{settings.dashboardTitle}</p>{data.source === "demo" && <span className="rounded-full bg-amber-100 px-2 py-1 text-[10px] font-bold text-amber-700">Modo demo</span>}</div><h1 className="mt-1 text-2xl font-bold tracking-tight text-foreground sm:text-3xl">Tu dinero, más claro.</h1><p className="mt-1 text-sm text-muted-foreground">Una lectura rápida de tu salud financiera.</p></div><div className="flex flex-wrap items-center gap-2"><label className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-xs font-semibold text-card-foreground"><CalendarDays className="size-4 text-primary" aria-hidden="true" /><select value={period} onChange={(event) => setPeriod(event.target.value)} className="bg-transparent outline-none"><option>{period}</option></select></label><button type="button" onClick={refresh} disabled={refreshing} className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-xs font-semibold text-card-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"><RefreshCw className={`size-4 ${refreshing ? "animate-spin" : ""}`} aria-hidden="true" />Actualizar</button></div></div>
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><MetricCard label="Ingresos totales" value={money(data.metrics.totalIncome)} helper="En el periodo seleccionado" icon={<ArrowUpRight className="size-4" aria-hidden="true" />} tone="blue" /><MetricCard label="Gastos totales" value={money(data.metrics.totalExpenses)} helper="En el periodo seleccionado" icon={<ArrowDownRight className="size-4" aria-hidden="true" />} tone="red" /><MetricCard label="Ahorro" value={money(data.metrics.savings)} helper="Ingresos menos gastos" icon={<CircleDollarSign className="size-4" aria-hidden="true" />} tone="green" /><MetricCard label="Ahorro %" value={`${data.metrics.savingsRate.toFixed(1)}%`} helper="De tus ingresos totales" icon={<TrendingUp className="size-4" aria-hidden="true" />} tone="purple" /></div>
-    <div className="grid gap-4 xl:grid-cols-2"><Card title="Distribución de gastos"><Donut data={data.expenseCategories} /></Card><Card title="Tendencia mensual"><TrendChart data={data.monthlyTrend} /></Card></div>
-    <div className="grid gap-4 xl:grid-cols-2"><Card title="Ingresos por fuente"><SimpleTable headers={["Fuente", "Monto", "%"]} rows={incomeRows} total={["Total", money(data.metrics.totalIncome), "100%"]} /></Card><Card title="Gastos por categoría"><SimpleTable headers={["Categoría", "Monto", "%"]} rows={categoryRows} total={["Total", money(data.metrics.totalExpenses), "100%"]} /></Card></div>
-    <div className="flex flex-col items-start justify-between gap-3 rounded-2xl border border-primary/15 bg-primary/5 p-4 sm:flex-row sm:items-center"><div><p className="text-sm font-bold text-card-foreground">Fuente de datos: {data.source === "notion" ? "Notion conectado" : "Datos de demostración"}</p><p className="mt-1 text-xs text-muted-foreground">Última actualización: {new Intl.DateTimeFormat("es-CO", { dateStyle: "medium", timeStyle: "short" }).format(new Date(data.updatedAt))}</p></div><button type="button" className="flex items-center gap-2 rounded-xl bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground transition hover:opacity-90"><Download className="size-4" aria-hidden="true" />Exportar resumen</button></div>
+  const current = data.monthlyTrend.at(-1) ?? { income: 0, expenses: 0 };
+  const previous = data.monthlyTrend.at(-2) ?? { income: 0, expenses: 0 };
+  const currentSavings = current.income - current.expenses;
+  const previousSavings = previous.income - previous.expenses;
+  const currentRate = current.income ? (currentSavings / current.income) * 100 : 0;
+  const previousRate = previous.income ? (previousSavings / previous.income) * 100 : 0;
+
+  return <div className="grid gap-2.5 lg:h-full lg:min-h-0 lg:grid-rows-[auto_78px_minmax(0,1.45fr)_92px_minmax(0,1fr)]">
+    <div className="flex items-end justify-between gap-3"><div><h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">{settings.dashboardTitle}</h1><p className="text-[11px] text-muted-foreground">Visión ejecutiva de tus finanzas · {data.source === "notion" ? "Notion conectado" : "Datos de demostración"}</p></div><div className="flex items-center gap-2"><label className="flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-[11px] font-semibold text-card-foreground"><CalendarDays className="size-3.5 text-primary" aria-hidden="true" /><select value={period} onChange={(event) => setPeriod(event.target.value)} className="bg-transparent outline-none"><option>{period}</option></select></label><button type="button" onClick={refresh} disabled={refreshing} className="flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-[11px] font-semibold text-card-foreground transition hover:bg-muted disabled:opacity-55"><RefreshCw className={`size-3.5 ${refreshing ? "animate-spin" : ""}`} aria-hidden="true" /><span className="hidden sm:inline">Actualizar</span></button></div></div>
+    <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4"><MetricCard label="Ingresos" value={compact(data.metrics.totalIncome)} delta={percentChange(current.income, previous.income)} /><MetricCard label="Gastos" value={compact(data.metrics.totalExpenses)} delta={percentChange(current.expenses, previous.expenses)} inverse /><MetricCard label="Ahorro" value={compact(data.metrics.savings)} delta={percentChange(currentSavings, previousSavings)} /><MetricCard label="% Ahorro" value={`${data.metrics.savingsRate.toFixed(1)}%`} delta={previousRate ? currentRate - previousRate : null} /></div>
+    <div className="grid min-h-0 gap-2.5 lg:grid-cols-[1.55fr_0.85fr]"><Panel title="Flujo de efectivo"><CashFlowChart data={data.monthlyTrend} /></Panel><Panel title="Gastos por división"><ExpenseDivision categories={data.expenseCategories} /></Panel></div>
+    <Panel title="Gastos por categoría"><CategoryTreemap categories={data.expenseCategories} /></Panel>
+    <Panel title="Transacciones recientes"><Transactions rows={data.recentTransactions} /></Panel>
   </div>;
 }
-
