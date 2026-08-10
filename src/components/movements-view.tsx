@@ -246,7 +246,7 @@ function MovementList({ rows, writable, onEdit, onDelete }: { rows: TransactionR
 }
 
 function MovementIdentity({ row }: { row: TransactionRecord }) {
-  return <div className="min-w-0"><div className="flex min-w-0 items-center gap-1.5"><p className="truncate font-bold text-card-foreground">{row.category}</p><TransactionDescriptionPopover description={row.description} /></div><div className="mt-1 flex min-w-0 items-center gap-1.5"><span className="shrink-0 text-[9px] font-semibold text-muted-foreground">{row.type === "income" ? "Ingreso" : "Gasto"}</span><span className="max-w-[105px] truncate rounded-full bg-secondary px-1.5 py-0.5 text-[8px] font-bold text-secondary-foreground">{row.division}</span></div></div>;
+  return <div className="min-w-0"><div className="flex min-w-0 items-center gap-1.5"><p className="truncate font-bold text-card-foreground">{row.description}</p><TransactionDescriptionPopover description={row.description} /></div><div className="mt-1 flex min-w-0 items-center gap-1.5"><span className="shrink-0 text-[9px] font-semibold text-muted-foreground">{row.type === "income" ? "Ingreso" : "Gasto"}</span><span className="max-w-[105px] truncate rounded-full bg-secondary px-1.5 py-0.5 text-[8px] font-bold text-secondary-foreground">{row.division}</span><span className="max-w-[105px] truncate rounded-full bg-muted px-1.5 py-0.5 text-[8px] font-bold text-muted-foreground">{row.category}</span></div></div>;
 }
 
 function TransactionEditor({ state, formOptions, writable, onClose, onSaved }: { state: EditorState; formOptions: Record<TransactionType, TransactionFormOptions>; writable: boolean; onClose: () => void; onSaved: (transaction: TransactionRecord) => void }) {

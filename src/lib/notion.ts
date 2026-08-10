@@ -3,12 +3,13 @@ import { AppError } from "@/lib/errors";
 
 type NotionProperty = Record<string, unknown>;
 type NotionRow = { id: string; properties: Record<string, NotionProperty>; created_time: string };
+type NotionOption = { id?: string; name?: string; color?: string; description?: string | null };
 type DatabaseProperty = {
   id: string;
   type: string;
-  select?: { options?: Array<{ name?: string }> };
-  status?: { options?: Array<{ name?: string }> };
-  multi_select?: { options?: Array<{ name?: string }> };
+  select?: { options?: NotionOption[] };
+  status?: { options?: NotionOption[] };
+  multi_select?: { options?: NotionOption[] };
 };
 type DatabaseSchema = Record<string, DatabaseProperty>;
 
@@ -33,6 +34,16 @@ export type TransactionFormOptions = {
   divisions: string[];
 };
 
+export type TransactionOptionField = "category" | "division";
+
+export type TransactionOptionCapability = {
+  propertyName: string | null;
+  propertyType: string | null;
+  editable: boolean;
+};
+
+export type TransactionOptionCapabilities = Record<TransactionType, Record<TransactionOptionField, TransactionOptionCapability>>;
+
 export type TransactionsData = {
   source: "notion" | "demo";
   transactions: TransactionRecord[];
@@ -40,6 +51,7 @@ export type TransactionsData = {
   categories: string[];
   divisions: string[];
   formOptions: Record<TransactionType, TransactionFormOptions>;
+  optionCapabilities: TransactionOptionCapabilities;
   updatedAt: string;
 };
 
@@ -88,6 +100,10 @@ function propertyByNames(properties: Record<string, NotionProperty>, names: stri
   const wanted = names.map(normalized);
   const entry = Object.entries(properties).find(([name]) => wanted.includes(normalized(name)));
   return entry?.[1];
+}
+
+function titleProperty(properties: Record<string, NotionProperty>) {
+  return Object.values(properties).find((property) => property.type === "title");
 }
 
 function categoryValue(properties: Record<string, NotionProperty>) {
@@ -151,7 +167,7 @@ function rowToTransaction(row: NotionRow, type: TransactionType): TransactionRec
     id: row.id,
     type,
     amount: Math.abs(numberValue(propertyByNames(row.properties, amountNames))),
-    description: textValue(propertyByNames(row.properties, descriptionNames)) ?? category,
+    description: textValue(titleProperty(row.properties)) ?? textValue(propertyByNames(row.properties, descriptionNames)) ?? category,
     account: textValue(propertyByNames(row.properties, accountNames)) ?? "Sin cuenta",
     category,
     division,
@@ -224,16 +240,39 @@ function schemaOptionValues(schema: DatabaseSchema, names: string[]) {
   return (options ?? []).map((option) => option.name?.trim()).filter((value): value is string => Boolean(value));
 }
 
+function optionSchemaEntry(schema: DatabaseSchema, field: TransactionOptionField) {
+  const names = field === "category" ? categoryNames : divisionNames;
+  const wanted = names.map(normalized);
+  const titleName = Object.entries(schema).find(([, property]) => property.type === "title")?.[0];
+  const matches = Object.entries(schema).filter(([name]) => wanted.includes(normalized(name)) && !(field === "category" && name === titleName));
+  return matches.find(([, property]) => ["select", "multi_select", "status"].includes(property.type)) ?? matches[0];
+}
+
+function optionCapability(schema: DatabaseSchema, field: TransactionOptionField): TransactionOptionCapability {
+  const entry = optionSchemaEntry(schema, field);
+  return {
+    propertyName: entry?.[0] ?? null,
+    propertyType: entry?.[1].type ?? null,
+    editable: !entry || ["select", "multi_select"].includes(entry[1].type),
+  };
+}
+
 function mergeOptions(...groups: string[][]) {
   return [...new Set(groups.flat().filter(Boolean))].sort((a, b) => a.localeCompare(b, "es"));
 }
 
 function formOptionsFor(type: TransactionType, items: TransactionRecord[], schema?: DatabaseSchema): TransactionFormOptions {
   const records = items.filter((item) => item.type === type);
+  const values = (names: string[], field: "account" | "category" | "division") => {
+    if (!schema) return uniqueValues(records, field);
+    const schemaValues = schemaOptionValues(schema, names);
+    const hasManagedOptions = Object.entries(schema).some(([name, property]) => names.map(normalized).includes(normalized(name)) && ["select", "multi_select", "status"].includes(property.type));
+    return hasManagedOptions ? mergeOptions(schemaValues) : uniqueValues(records, field);
+  };
   return {
-    accounts: mergeOptions(schema ? schemaOptionValues(schema, accountNames) : [], uniqueValues(records, "account")),
-    categories: mergeOptions(schema ? schemaOptionValues(schema, categoryNames) : [], uniqueValues(records, "category")),
-    divisions: mergeOptions(schema ? schemaOptionValues(schema, divisionNames) : [], uniqueValues(records, "division")),
+    accounts: values(accountNames, "account"),
+    categories: values(categoryNames, "category"),
+    divisions: values(divisionNames, "division"),
   };
 }
 
@@ -254,6 +293,16 @@ export async function getTransactionsData(): Promise<TransactionsData> {
     formOptions: {
       income: formOptionsFor("income", items, incomeSchema),
       expense: formOptionsFor("expense", items, expenseSchema),
+    },
+    optionCapabilities: {
+      income: {
+        category: incomeSchema ? optionCapability(incomeSchema, "category") : { propertyName: null, propertyType: null, editable: false },
+        division: incomeSchema ? optionCapability(incomeSchema, "division") : { propertyName: null, propertyType: null, editable: false },
+      },
+      expense: {
+        category: expenseSchema ? optionCapability(expenseSchema, "category") : { propertyName: null, propertyType: null, editable: false },
+        division: expenseSchema ? optionCapability(expenseSchema, "division") : { propertyName: null, propertyType: null, editable: false },
+      },
     },
     updatedAt: new Date().toISOString(),
   };
@@ -380,7 +429,7 @@ function writableValue(type: string, value: string | number) {
 function transactionProperties(schema: DatabaseSchema, input: TransactionInput) {
   const properties: Record<string, unknown> = {};
   const used = new Set<string>();
-  const titleEntry = schemaPropertyByNames(schema, descriptionNames) ?? Object.entries(schema).find(([, property]) => property.type === "title");
+  const titleEntry = Object.entries(schema).find(([, property]) => property.type === "title");
   if (!titleEntry) throw new AppError("La base de Notion necesita una propiedad de título.", "NOTION_TITLE_REQUIRED", 400);
 
   function assign(entry: [string, DatabaseProperty] | undefined, value: string | number, required: boolean, label: string) {
@@ -453,4 +502,137 @@ export async function deleteTransaction(pageId: string) {
   await managedPage(pageId);
   await notionClient().pages.update({ page_id: pageId, archived: true });
   return pageId;
+}
+
+function optionList(property: DatabaseProperty) {
+  if (property.type === "select") return property.select?.options ?? [];
+  if (property.type === "multi_select") return property.multi_select?.options ?? [];
+  if (property.type === "status") return property.status?.options ?? [];
+  return [];
+}
+
+function sameOption(left: string | undefined, right: string) {
+  return Boolean(left && normalized(left) === normalized(right));
+}
+
+async function editableOptionProperty(type: TransactionType, field: TransactionOptionField) {
+  requireNotionWriteConfiguration();
+  const databaseId = databaseIdFor(type);
+  const schema = await ensureTransactionSchema(databaseId, await databaseSchema(databaseId));
+  const entry = optionSchemaEntry(schema, field);
+  if (!entry) throw new AppError(`No encontramos la propiedad ${field === "category" ? "Categoría" : "División"} en Notion.`, "NOTION_OPTION_PROPERTY_MISSING", 400);
+  if (!["select", "multi_select"].includes(entry[1].type)) {
+    throw new AppError(`La propiedad ${entry[0]} debe ser de tipo Selección o Selección múltiple para administrar sus opciones.`, "NOTION_OPTION_PROPERTY_UNSUPPORTED", 400);
+  }
+  return { databaseId, propertyName: entry[0], property: entry[1] };
+}
+
+function existingOptionPayload(options: NotionOption[], excludedName?: string) {
+  return options
+    .filter((option) => !excludedName || !sameOption(option.name, excludedName))
+    .map((option) => option.id ? { id: option.id } : { name: option.name! });
+}
+
+async function updateOptionSchema(databaseId: string, propertyName: string, property: DatabaseProperty, options: Array<{ id?: string; name?: string }>) {
+  const configuration = property.type === "select" ? { select: { options } } : { multi_select: { options } };
+  const database = await notionClient().databases.update({
+    database_id: databaseId,
+    properties: { [propertyName]: configuration } as never,
+  });
+  const schema = database.properties as unknown as DatabaseSchema;
+  const updated = schema[propertyName] ?? optionSchemaEntry(schema, normalized(propertyName) === normalized("División") ? "division" : "category")?.[1];
+  return updated ? schemaOptionValues({ [propertyName]: updated }, [propertyName]) : [];
+}
+
+function replacementPropertyValue(property: NotionProperty, propertyType: string, currentName: string, replacementName: string) {
+  if (propertyType === "select") {
+    const selected = property.select as { name?: string } | null | undefined;
+    return sameOption(selected?.name, currentName) ? { select: { name: replacementName } } : null;
+  }
+  const selected = property.multi_select as Array<{ name?: string }> | undefined;
+  if (!selected?.some((option) => sameOption(option.name, currentName))) return null;
+  const names = selected
+    .map((option) => sameOption(option.name, currentName) ? replacementName : option.name)
+    .filter((name): name is string => Boolean(name));
+  return { multi_select: [...new Set(names.map((name) => name.trim()))].map((name) => ({ name })) };
+}
+
+async function replaceOptionInPages(databaseId: string, propertyName: string, propertyType: string, currentName: string, replacementName: string) {
+  const rows = await queryDatabase(databaseId);
+  const updates = rows.flatMap((row) => {
+    const property = row.properties[propertyName];
+    if (!property) return [];
+    const value = replacementPropertyValue(property, propertyType, currentName, replacementName);
+    return value ? [{ pageId: row.id, value }] : [];
+  });
+
+  for (let index = 0; index < updates.length; index += 3) {
+    await Promise.all(updates.slice(index, index + 3).map((update) => notionClient().pages.update({
+      page_id: update.pageId,
+      properties: { [propertyName]: update.value } as never,
+    })));
+    if (index + 3 < updates.length) await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  return updates.length;
+}
+
+export async function createTransactionOption(type: TransactionType, field: TransactionOptionField, name: string) {
+  const target = await editableOptionProperty(type, field);
+  const options = optionList(target.property);
+  if (options.some((option) => sameOption(option.name, name))) {
+    throw new AppError(`La opción “${name}” ya existe en Notion.`, "NOTION_OPTION_EXISTS", 409);
+  }
+  const updatedOptions = await updateOptionSchema(target.databaseId, target.propertyName, target.property, [
+    ...existingOptionPayload(options),
+    { name },
+  ]);
+  return { options: mergeOptions(updatedOptions), moved: 0 };
+}
+
+export async function renameTransactionOption(type: TransactionType, field: TransactionOptionField, currentName: string, nextName: string) {
+  const target = await editableOptionProperty(type, field);
+  let options = optionList(target.property);
+  const current = options.find((option) => sameOption(option.name, currentName));
+  if (!current) throw new AppError(`La opción “${currentName}” ya no existe en Notion. Sincroniza e intenta de nuevo.`, "NOTION_OPTION_NOT_FOUND", 404);
+  if (sameOption(currentName, nextName)) throw new AppError("El nuevo nombre debe ser diferente.", "NOTION_OPTION_NAME_UNCHANGED", 400);
+
+  if (!options.some((option) => sameOption(option.name, nextName))) {
+    await updateOptionSchema(target.databaseId, target.propertyName, target.property, [
+      ...existingOptionPayload(options),
+      { name: nextName },
+    ]);
+    const refreshed = await databaseSchema(target.databaseId);
+    options = optionList(refreshed[target.propertyName] ?? target.property);
+  }
+
+  const moved = await replaceOptionInPages(target.databaseId, target.propertyName, target.property.type, currentName, nextName);
+  const updatedOptions = await updateOptionSchema(target.databaseId, target.propertyName, target.property, existingOptionPayload(options, currentName));
+  return { options: mergeOptions(updatedOptions), moved };
+}
+
+export async function deleteTransactionOption(type: TransactionType, field: TransactionOptionField, name: string, replacement?: string) {
+  const target = await editableOptionProperty(type, field);
+  const options = optionList(target.property);
+  if (!options.some((option) => sameOption(option.name, name))) {
+    throw new AppError(`La opción “${name}” ya no existe en Notion. Sincroniza e intenta de nuevo.`, "NOTION_OPTION_NOT_FOUND", 404);
+  }
+  if (replacement && sameOption(name, replacement)) throw new AppError("Selecciona una opción de reemplazo diferente.", "NOTION_OPTION_REPLACEMENT_INVALID", 400);
+  if (replacement && !options.some((option) => sameOption(option.name, replacement))) {
+    throw new AppError(`La opción de reemplazo “${replacement}” no existe en Notion.`, "NOTION_OPTION_REPLACEMENT_NOT_FOUND", 400);
+  }
+
+  const rows = await queryDatabase(target.databaseId);
+  const used = rows.some((row) => {
+    const property = row.properties[target.propertyName];
+    if (!property) return false;
+    if (target.property.type === "select") return sameOption((property.select as { name?: string } | null | undefined)?.name, name);
+    return ((property.multi_select as Array<{ name?: string }> | undefined) ?? []).some((option) => sameOption(option.name, name));
+  });
+  if (used && !replacement) {
+    throw new AppError("Esta opción está usada por movimientos. Selecciona una opción de reemplazo antes de eliminarla.", "NOTION_OPTION_IN_USE", 409);
+  }
+
+  const moved = replacement ? await replaceOptionInPages(target.databaseId, target.propertyName, target.property.type, name, replacement) : 0;
+  const updatedOptions = await updateOptionSchema(target.databaseId, target.propertyName, target.property, existingOptionPayload(options, name));
+  return { options: mergeOptions(updatedOptions), moved };
 }
