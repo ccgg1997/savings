@@ -274,7 +274,7 @@ function Transactions({ rows }: { rows: DashboardData["recentTransactions"] }) {
         <table className="w-full min-w-[560px] table-fixed text-left text-[11px]">
           <thead>
             <tr className="border-b border-border bg-muted/40 text-[9px] font-bold uppercase tracking-[0.12em] text-muted-foreground sm:bg-transparent">
-              <th className="sticky left-0 z-20 w-[34%] bg-muted px-3 py-3 sm:static sm:bg-transparent sm:px-0 sm:pr-3">Movimiento</th>
+              <th className="w-[34%] px-3 py-3 sm:px-0 sm:pr-3">Movimiento</th>
               <th className="w-[24%] px-3 py-3 text-right sm:px-0">Monto</th>
               <th className="w-[19%] px-3 py-3 sm:px-0">Fecha</th>
               <th className="w-[23%] px-3 py-3 sm:px-0">Cuenta</th>
@@ -283,7 +283,7 @@ function Transactions({ rows }: { rows: DashboardData["recentTransactions"] }) {
           <tbody>
             {rows.slice(0, 5).map((row) => (
               <tr key={row.id} className="group border-b border-border/55 last:border-0 hover:bg-muted/25">
-                <td className="sticky left-0 z-10 bg-card px-3 py-3 transition group-hover:bg-muted sm:static sm:px-0 sm:pr-3">
+                <td className="px-3 py-3 sm:px-0 sm:pr-3">
                   <CompactMovement row={row} />
                 </td>
                 <td className={`truncate px-3 py-3 text-right font-bold tabular-nums sm:px-0 ${row.type === "income" ? "text-emerald-600" : "text-card-foreground"}`}>{row.type === "income" ? "+" : "−"}{money(row.amount)}</td>
