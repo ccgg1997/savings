@@ -55,6 +55,7 @@ type SummaryMetricProps = {
   value: string;
   icon: typeof Wallet;
   tone: "budget" | "income" | "expense" | "balance";
+  className?: string;
 };
 
 const summaryTones = {
@@ -64,9 +65,9 @@ const summaryTones = {
   balance: "bg-primary/10 text-primary",
 };
 
-function SummaryMetric({ label, value, icon: Icon, tone }: SummaryMetricProps) {
+function SummaryMetric({ label, value, icon: Icon, tone, className = "" }: SummaryMetricProps) {
   return (
-    <div className="flex min-w-0 items-center gap-3 border-l border-border/80 px-4 py-3 first:border-l-0 sm:px-5">
+    <div className={`flex min-w-0 items-center gap-3 border-border/80 px-3 py-3 sm:px-5 ${className}`}>
       <span className={`flex size-9 shrink-0 items-center justify-center rounded-xl ${summaryTones[tone]}`}>
         <Icon className="size-4" aria-hidden="true" />
       </span>
@@ -384,12 +385,12 @@ export function DashboardView({ initialData, settings }: { initialData: Dashboar
         </div>
       </header>
 
-      <section className="scrollbar-subtle overflow-x-auto rounded-2xl border border-border/90 bg-card shadow-[0_8px_24px_rgba(25,48,40,0.04)]" aria-label="Resumen financiero">
-        <div className="grid min-w-[640px] grid-cols-4">
-          <SummaryMetric label="Presupuesto" value={data.budget === null ? "Sin definir" : compact(data.budget)} icon={Target} tone="budget" />
+      <section className="overflow-hidden rounded-2xl border border-border/90 bg-card shadow-[0_8px_24px_rgba(25,48,40,0.04)]" aria-label="Resumen financiero">
+        <div className="grid grid-cols-2 sm:min-w-[640px] sm:grid-cols-4">
           <SummaryMetric label="Ingreso total" value={compact(data.metrics.totalIncome)} icon={Wallet} tone="income" />
-          <SummaryMetric label="Gastos totales" value={compact(data.metrics.totalExpenses)} icon={ReceiptText} tone="expense" />
-          <SummaryMetric label="Balance" value={compact(data.metrics.savings)} icon={PiggyBank} tone="balance" />
+          <SummaryMetric className="border-l" label="Gastos totales" value={compact(data.metrics.totalExpenses)} icon={ReceiptText} tone="expense" />
+          <SummaryMetric className="border-t sm:border-l sm:border-t-0" label="Balance" value={compact(data.metrics.savings)} icon={PiggyBank} tone="balance" />
+          <SummaryMetric className="border-l border-t sm:border-t-0" label="Presupuesto" value={data.budget === null ? "Sin definir" : compact(data.budget)} icon={Target} tone="budget" />
         </div>
       </section>
 
