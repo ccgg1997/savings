@@ -29,6 +29,16 @@ export default async function MovementsPage({ searchParams }: { searchParams: Pr
         income: { accounts: [], categories: [], divisions: [] },
         expense: { accounts: [], categories: [], divisions: [] },
       },
+      optionCapabilities: {
+        income: {
+          category: { propertyName: null, propertyType: null, editable: false },
+          division: { propertyName: null, propertyType: null, editable: false },
+        },
+        expense: {
+          category: { propertyName: null, propertyType: null, editable: false },
+          division: { propertyName: null, propertyType: null, editable: false },
+        },
+      },
       updatedAt: new Date().toISOString(),
     };
   }

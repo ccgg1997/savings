@@ -217,15 +217,16 @@ function MovementList({ rows, writable, onEdit, onDelete }: { rows: TransactionR
                 <p className="truncate text-sm font-bold text-card-foreground">{row.description}</p>
                 <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-1.5">
                   <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold ${row.type === "income" ? "bg-emerald-50 text-emerald-700" : "bg-orange-50 text-orange-700"}`}>{row.type === "income" ? "Ingreso" : "Gasto"}</span>
-                  <span className="max-w-[125px] truncate rounded-full bg-secondary px-2 py-0.5 text-[9px] font-bold text-secondary-foreground">{row.category}</span>
+                  <span className="max-w-[125px] truncate rounded-full bg-secondary px-2 py-0.5 text-[9px] font-bold text-secondary-foreground">{row.division}</span>
+                  <span className="max-w-[125px] truncate rounded-full bg-muted px-2 py-0.5 text-[9px] font-bold text-muted-foreground">{row.category}</span>
                 </div>
               </div>
               <p className={`shrink-0 whitespace-nowrap text-sm font-bold tabular-nums ${row.type === "income" ? "text-emerald-700" : "text-card-foreground"}`}>{row.type === "income" ? "+" : "−"}{money(row.amount)}</p>
             </div>
             <div className="mt-3 flex min-w-0 items-end justify-between gap-3">
               <dl className="grid min-w-0 flex-1 grid-cols-2 gap-3 text-[10px]">
-                <div className="min-w-0"><dt className="font-semibold text-muted-foreground">División</dt><dd className="mt-0.5 truncate font-bold text-card-foreground">{row.division}</dd></div>
-                <div className="min-w-0"><dt className="font-semibold text-muted-foreground">Cuenta · {formatShortDate(row.date)}</dt><dd className="mt-0.5 truncate font-bold text-card-foreground">{row.account}</dd></div>
+                <div className="min-w-0"><dt className="font-semibold text-muted-foreground">Fecha</dt><dd className="mt-0.5 truncate font-bold tabular-nums text-card-foreground">{formatShortDate(row.date)}</dd></div>
+                <div className="min-w-0"><dt className="font-semibold text-muted-foreground">Cuenta</dt><dd className="mt-0.5 truncate font-bold text-card-foreground">{row.account}</dd></div>
               </dl>
               <div className="flex shrink-0 gap-1">
                 <button type="button" disabled={!writable} onClick={() => onEdit(row)} className="flex size-9 items-center justify-center rounded-lg border border-border text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:opacity-30" aria-label={`Editar ${row.description}`}><Pencil className="size-3.5" aria-hidden="true" /></button>
