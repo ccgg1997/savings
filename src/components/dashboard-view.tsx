@@ -28,7 +28,13 @@ import { captureClientError, notifySuccess } from "@/lib/client-errors";
 const currency = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
 const compactCurrency = new Intl.NumberFormat("es-CO", { notation: "compact", maximumFractionDigits: 1 });
 const dateFormatter = new Intl.DateTimeFormat("es-CO", { day: "2-digit", month: "short", year: "numeric" });
-const updatedFormatter = new Intl.DateTimeFormat("es-CO", { day: "2-digit", month: "short", hour: "numeric", minute: "2-digit" });
+const updatedFormatter = new Intl.DateTimeFormat("es-CO", {
+  day: "2-digit",
+  month: "short",
+  hour: "numeric",
+  minute: "2-digit",
+  timeZone: "America/Bogota",
+});
 
 function money(value: number) {
   return currency.format(value);
