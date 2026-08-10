@@ -4,12 +4,10 @@ import { useMemo, useState } from "react";
 import {
   ArrowDownLeft,
   ArrowUpRight,
-  CalendarDays,
   CheckCircle2,
   ChevronDown,
   CircleDollarSign,
   FilterX,
-  Landmark,
   LoaderCircle,
   Pencil,
   Plus,
@@ -25,14 +23,28 @@ import { captureClientError, notifySuccess } from "@/lib/client-errors";
 import { useBodyScrollLock } from "@/lib/use-body-scroll-lock";
 
 const currency = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
-const dateFormatter = new Intl.DateTimeFormat("es-CO", { day: "2-digit", month: "short", year: "numeric" });
 const today = () => new Date().toISOString().slice(0, 10);
+const monthNames = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 
 type EditorState = { mode: "create"; type: TransactionType } | { mode: "edit"; transaction: TransactionRecord };
 type TransactionDraft = Omit<TransactionInput, "amount"> & { amount: string };
 
 function money(value: number) {
   return currency.format(value);
+}
+
+function formatShortDate(value: string) {
+  const [year = "", month = "", day = ""] = value.split("-");
+  return `${day}-${month}-${year.slice(-2)}`;
+}
+
+function getMonthOptions(transactions: TransactionRecord[]) {
+  return [...new Set(transactions.map((item) => item.date.slice(0, 7)).filter(Boolean))].sort().reverse();
+}
+
+function formatMonth(value: string) {
+  const [year, month] = value.split("-");
+  return `${monthNames[Math.max(0, Number(month) - 1)] ?? value} ${year}`;
 }
 
 function emptyDraft(type: TransactionType): TransactionDraft {
@@ -57,32 +69,37 @@ export function MovementsView({ initialData, initialDivision }: { initialData: T
   const [division, setDivision] = useState(initialDivision && initialData.divisions.includes(initialDivision) ? initialDivision : "all");
   const [type, setType] = useState<"all" | TransactionType>("all");
   const [search, setSearch] = useState("");
+  const [month, setMonth] = useState(() => getMonthOptions(initialData.transactions)[0] ?? "all");
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [deleting, setDeleting] = useState<TransactionRecord | null>(null);
 
   const categories = useMemo(() => [...new Set(transactions.map((item) => item.category))].sort((a, b) => a.localeCompare(b, "es")), [transactions]);
   const divisions = useMemo(() => [...new Set(transactions.map((item) => item.division))].sort((a, b) => a.localeCompare(b, "es")), [transactions]);
+  const months = useMemo(() => getMonthOptions(transactions), [transactions]);
+  const latestMonth = months[0] ?? "all";
+  const monthTransactions = useMemo(() => transactions.filter((item) => month === "all" || item.date.startsWith(`${month}-`)), [transactions, month]);
   const filtered = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("es");
-    return transactions.filter((item) => {
+    return monthTransactions.filter((item) => {
       if (type !== "all" && item.type !== type) return false;
       if (category !== "all" && item.category !== category) return false;
       if (division !== "all" && item.division !== division) return false;
       if (query && ![item.description, item.account, item.category, item.division].some((value) => value.toLocaleLowerCase("es").includes(query))) return false;
       return true;
     });
-  }, [transactions, type, category, division, search]);
+  }, [monthTransactions, type, category, division, search]);
 
   const totals = useMemo(() => {
-    const income = transactions.filter((item) => item.type === "income").reduce((sum, item) => sum + item.amount, 0);
-    const expense = transactions.filter((item) => item.type === "expense").reduce((sum, item) => sum + item.amount, 0);
+    const income = monthTransactions.filter((item) => item.type === "income").reduce((sum, item) => sum + item.amount, 0);
+    const expense = monthTransactions.filter((item) => item.type === "expense").reduce((sum, item) => sum + item.amount, 0);
     return { income, expense, balance: income - expense };
-  }, [transactions]);
+  }, [monthTransactions]);
 
-  const filtersActive = category !== "all" || division !== "all" || type !== "all" || search.length > 0;
+  const filtersActive = month !== latestMonth || category !== "all" || division !== "all" || type !== "all" || search.length > 0;
   const writable = initialData.source === "notion";
 
   function clearFilters() {
+    setMonth(latestMonth);
     setCategory("all");
     setDivision("all");
     setType("all");
@@ -120,8 +137,8 @@ export function MovementsView({ initialData, initialDivision }: { initialData: T
         </div>
       </header>
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Resumen de movimientos">
-        <SummaryCard icon={ReceiptText} label="Movimientos" value={String(transactions.length)} helper="registros sincronizados" tone="neutral" />
+      <section className="hidden gap-3 sm:grid sm:grid-cols-2 xl:grid-cols-4" aria-label="Resumen de movimientos">
+        <SummaryCard icon={ReceiptText} label="Movimientos" value={String(monthTransactions.length)} helper="registros del periodo" tone="neutral" />
         <SummaryCard icon={ArrowDownLeft} label="Ingresos" value={money(totals.income)} helper="total acumulado" tone="income" />
         <SummaryCard icon={ArrowUpRight} label="Gastos" value={money(totals.expense)} helper="total acumulado" tone="expense" />
         <SummaryCard icon={CircleDollarSign} label="Balance" value={money(totals.balance)} helper="ingresos menos gastos" tone="featured" />
@@ -132,14 +149,15 @@ export function MovementsView({ initialData, initialDivision }: { initialData: T
           <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-end">
             <div>
               <h2 className="text-base font-bold tracking-tight text-card-foreground">Todos los movimientos</h2>
-              <p className="mt-1 text-[11px] text-muted-foreground">Los filtros de división y categoría son independientes.</p>
+              <p className="mt-1 text-[11px] text-muted-foreground">Filtra por mes, división o categoría.</p>
             </div>
-            <div className="grid flex-1 gap-2 sm:grid-cols-2 xl:max-w-4xl xl:grid-cols-[1.2fr_1fr_1fr_auto]">
-              <label className="relative block">
+            <div className="grid flex-1 grid-cols-2 gap-2 xl:max-w-5xl xl:grid-cols-[1.2fr_0.9fr_1fr_1fr_auto]">
+              <label className="relative col-span-2 block xl:col-span-1">
                 <span className="sr-only">Buscar movimientos</span>
                 <Search className="pointer-events-none absolute left-3 top-3 size-4 text-muted-foreground" aria-hidden="true" />
                 <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar movimiento…" className="h-10 w-full rounded-xl border border-input bg-background pl-9 pr-3 text-xs text-foreground placeholder:text-muted-foreground focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/20" />
               </label>
+              <MonthFilter value={month} onChange={setMonth} options={months} />
               <FilterSelect label="División" value={division} onChange={setDivision} options={divisions} />
               <FilterSelect label="Categoría" value={category} onChange={setCategory} options={categories} />
               <button type="button" onClick={clearFilters} disabled={!filtersActive} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-border bg-card px-3 text-xs font-bold text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-35"><FilterX className="size-4" aria-hidden="true" /><span className="sm:hidden xl:inline">Limpiar</span></button>
@@ -149,7 +167,7 @@ export function MovementsView({ initialData, initialDivision }: { initialData: T
             {(["all", "income", "expense"] as const).map((value) => (
               <button key={value} type="button" onClick={() => setType(value)} className={`rounded-full px-3 py-1.5 text-[10px] font-bold transition ${type === value ? "bg-surface-dark text-surface-dark-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}>{value === "all" ? "Todos" : value === "income" ? "Ingresos" : "Gastos"}</button>
             ))}
-            <span className="ml-auto text-[10px] font-semibold text-muted-foreground">{filtered.length} de {transactions.length}</span>
+            <span className="ml-auto text-[10px] font-semibold text-muted-foreground">{filtered.length} de {monthTransactions.length}</span>
           </div>
         </div>
 
@@ -182,17 +200,21 @@ function FilterSelect({ label, value, onChange, options }: { label: string; valu
   return <label className="relative block"><span className="pointer-events-none absolute left-3 top-1.5 text-[8px] font-bold uppercase tracking-wide text-muted-foreground">{label}</span><select value={value} onChange={(event) => onChange(event.target.value)} className="h-10 w-full appearance-none rounded-xl border border-input bg-background px-3 pb-1 pt-3 text-[11px] font-bold text-foreground focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/20"><option value="all">Todas</option>{options.map((option) => <option key={option} value={option}>{option}</option>)}</select><ChevronDown className="pointer-events-none absolute right-3 top-3 size-4 text-muted-foreground" aria-hidden="true" /></label>;
 }
 
+function MonthFilter({ value, onChange, options }: { value: string; onChange: (value: string) => void; options: string[] }) {
+  return <label className="relative block"><span className="pointer-events-none absolute left-3 top-1.5 text-[8px] font-bold uppercase tracking-wide text-muted-foreground">Mes</span><select value={value} onChange={(event) => onChange(event.target.value)} className="h-10 w-full appearance-none rounded-xl border border-input bg-background px-3 pb-1 pt-3 text-[11px] font-bold capitalize text-foreground focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/20"><option value="all">Todos los meses</option>{options.map((option) => <option key={option} value={option}>{formatMonth(option)}</option>)}</select><ChevronDown className="pointer-events-none absolute right-3 top-3 size-4 text-muted-foreground" aria-hidden="true" /></label>;
+}
+
 function MovementList({ rows, writable, onEdit, onDelete }: { rows: TransactionRecord[]; writable: boolean; onEdit: (row: TransactionRecord) => void; onDelete: (row: TransactionRecord) => void }) {
-  if (!rows.length) return <div className="p-10 text-center"><span className="mx-auto flex size-12 items-center justify-center rounded-2xl bg-muted text-muted-foreground"><Search className="size-5" aria-hidden="true" /></span><p className="mt-3 text-sm font-bold text-card-foreground">No encontramos movimientos</p><p className="mt-1 text-xs text-muted-foreground">Prueba otra combinación de división y categoría.</p></div>;
+  if (!rows.length) return <div className="p-10 text-center"><span className="mx-auto flex size-12 items-center justify-center rounded-2xl bg-muted text-muted-foreground"><Search className="size-5" aria-hidden="true" /></span><p className="mt-3 text-sm font-bold text-card-foreground">No encontramos movimientos</p><p className="mt-1 text-xs text-muted-foreground">Prueba otra combinación de mes, división y categoría.</p></div>;
   return (
     <div className="border-t border-border/70">
       <div className="flex items-center justify-between px-4 py-2 text-[9px] font-semibold text-muted-foreground sm:hidden">
         <span>Tabla completa</span><span>Desliza horizontalmente →</span>
       </div>
       <div className="scrollbar-subtle overflow-x-auto overscroll-x-contain" tabIndex={0} aria-label="Tabla completa de movimientos; desplázate horizontalmente para ver todas las columnas">
-        <table className="w-full min-w-[940px] text-left text-[11px]">
-          <thead><tr className="border-b border-border bg-muted/45 text-[9px] font-bold uppercase tracking-[0.12em] text-muted-foreground"><th className="sticky left-0 z-20 bg-muted px-4 py-3 sm:px-5">Movimiento</th><th className="px-3 py-3">Fecha</th><th className="px-3 py-3">División</th><th className="px-3 py-3">Categoría</th><th className="px-3 py-3">Cuenta</th><th className="px-3 py-3 text-right">Monto</th><th className="sticky right-0 z-20 bg-muted px-4 py-3 text-right sm:px-5">Acciones</th></tr></thead>
-          <tbody>{rows.map((row) => <tr key={row.id} className="group border-b border-border/60 last:border-0 hover:bg-muted/25"><td className="sticky left-0 z-10 bg-card px-4 py-3 transition group-hover:bg-muted sm:px-5"><MovementIdentity row={row} /></td><td className="whitespace-nowrap px-3 py-3 text-muted-foreground">{dateFormatter.format(new Date(`${row.date}T12:00:00`))}</td><td className="px-3 py-3"><span className="inline-flex rounded-full bg-secondary px-2.5 py-1 font-semibold text-secondary-foreground">{row.division}</span></td><td className="px-3 py-3"><span className="inline-flex rounded-full bg-muted px-2.5 py-1 font-semibold text-muted-foreground">{row.category}</span></td><td className="px-3 py-3"><span className="inline-flex rounded-full border border-border bg-card px-2.5 py-1 font-semibold text-muted-foreground">{row.account}</span></td><td className={`whitespace-nowrap px-3 py-3 text-right font-bold ${row.type === "income" ? "text-emerald-700" : "text-card-foreground"}`}>{row.type === "income" ? "+" : "−"}{money(row.amount)}</td><td className="sticky right-0 z-10 bg-card px-4 py-3 transition group-hover:bg-muted sm:px-5"><div className="flex justify-end gap-1"><button type="button" disabled={!writable} onClick={() => onEdit(row)} className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-background hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:opacity-30" title="Editar movimiento"><Pencil className="size-3.5" aria-hidden="true" /><span className="sr-only">Editar</span></button><button type="button" disabled={!writable} onClick={() => onDelete(row)} className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-red-50 hover:text-red-600 focus-visible:ring-2 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:opacity-30" title="Eliminar movimiento"><Trash2 className="size-3.5" aria-hidden="true" /><span className="sr-only">Eliminar</span></button></div></td></tr>)}</tbody>
+        <table className="w-full min-w-[650px] text-left text-[11px]">
+          <thead><tr className="border-b border-border bg-muted/45 text-[9px] font-bold uppercase tracking-[0.12em] text-muted-foreground"><th className="sticky left-0 z-20 w-[190px] bg-muted px-4 py-3 sm:px-5">Movimiento</th><th className="w-[130px] px-3 py-3 text-right">Monto</th><th className="w-[95px] px-3 py-3">Fecha</th><th className="w-[120px] px-3 py-3">Cuenta</th><th className="w-[105px] px-4 py-3 text-right sm:px-5">Acciones</th></tr></thead>
+          <tbody>{rows.map((row) => <tr key={row.id} className="group border-b border-border/60 last:border-0 hover:bg-muted/25"><td className="sticky left-0 z-10 bg-card px-4 py-3 transition group-hover:bg-muted sm:px-5"><MovementIdentity row={row} /></td><td className={`whitespace-nowrap px-3 py-3 text-right font-bold tabular-nums ${row.type === "income" ? "text-emerald-700" : "text-card-foreground"}`}>{row.type === "income" ? "+" : "−"}{money(row.amount)}</td><td className="whitespace-nowrap px-3 py-3 tabular-nums text-muted-foreground">{formatShortDate(row.date)}</td><td className="px-3 py-3"><span className="inline-flex max-w-[110px] truncate rounded-full border border-border bg-card px-2.5 py-1 font-semibold text-muted-foreground">{row.account}</span></td><td className="px-4 py-3 sm:px-5"><div className="flex justify-end gap-1"><button type="button" disabled={!writable} onClick={() => onEdit(row)} className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-background hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:opacity-30" title="Editar movimiento"><Pencil className="size-3.5" aria-hidden="true" /><span className="sr-only">Editar</span></button><button type="button" disabled={!writable} onClick={() => onDelete(row)} className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-red-50 hover:text-red-600 focus-visible:ring-2 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:opacity-30" title="Eliminar movimiento"><Trash2 className="size-3.5" aria-hidden="true" /><span className="sr-only">Eliminar</span></button></div></td></tr>)}</tbody>
         </table>
       </div>
     </div>
@@ -200,7 +222,7 @@ function MovementList({ rows, writable, onEdit, onDelete }: { rows: TransactionR
 }
 
 function MovementIdentity({ row }: { row: TransactionRecord }) {
-  return <div className="flex items-center gap-3"><span className={`flex size-9 shrink-0 items-center justify-center rounded-xl ${row.type === "income" ? "bg-emerald-500/10 text-emerald-700" : "bg-orange-500/10 text-orange-700"}`}>{row.type === "income" ? <ArrowDownLeft className="size-4" aria-hidden="true" /> : <ArrowUpRight className="size-4" aria-hidden="true" />}</span><div className="min-w-0"><p className="truncate font-bold text-card-foreground">{row.description}</p><p className="mt-0.5 text-[9px] text-muted-foreground">{row.type === "income" ? "Ingreso" : "Gasto"}</p></div></div>;
+  return <div className="min-w-0"><p className="truncate font-bold text-card-foreground">{row.category}</p><div className="mt-1 flex min-w-0 items-center gap-1.5"><span className="shrink-0 text-[9px] font-semibold text-muted-foreground">{row.type === "income" ? "Ingreso" : "Gasto"}</span><span className="max-w-[105px] truncate rounded-full bg-secondary px-1.5 py-0.5 text-[8px] font-bold text-secondary-foreground">{row.division}</span></div></div>;
 }
 
 function TransactionEditor({ state, categories, divisions, writable, onClose, onSaved }: { state: EditorState; categories: string[]; divisions: string[]; writable: boolean; onClose: () => void; onSaved: (transaction: TransactionRecord) => void }) {

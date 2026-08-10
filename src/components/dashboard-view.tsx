@@ -14,7 +14,6 @@ import {
   ReceiptText,
   RefreshCw,
   ShieldCheck,
-  Sparkles,
   Target,
   TrendingUp,
   Wallet,
@@ -28,7 +27,6 @@ import { useBodyScrollLock } from "@/lib/use-body-scroll-lock";
 
 const currency = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
 const compactCurrency = new Intl.NumberFormat("es-CO", { notation: "compact", maximumFractionDigits: 1 });
-const dateFormatter = new Intl.DateTimeFormat("es-CO", { day: "2-digit", month: "short", year: "numeric" });
 const updatedFormatter = new Intl.DateTimeFormat("es-CO", {
   day: "2-digit",
   month: "short",
@@ -43,6 +41,11 @@ function money(value: number) {
 
 function compact(value: number) {
   return `$${compactCurrency.format(value)}`;
+}
+
+function formatShortDate(value: string) {
+  const [year = "", month = "", day = ""] = value.split("-");
+  return `${day}-${month}-${year.slice(-2)}`;
 }
 
 function formatUpdatedAt(value: string) {
@@ -254,6 +257,10 @@ function CategoryMosaic({ categories }: { categories: DashboardData["expenseCate
   );
 }
 
+function CompactMovement({ row }: { row: DashboardData["recentTransactions"][number] }) {
+  return <div className="min-w-0"><p className="truncate font-bold text-card-foreground">{row.category}</p><div className="mt-1 flex min-w-0 items-center gap-1.5"><span className="shrink-0 text-[9px] font-semibold text-muted-foreground">{row.type === "income" ? "Ingreso" : "Gasto"}</span><span className="max-w-[105px] truncate rounded-full bg-secondary px-1.5 py-0.5 text-[8px] font-bold text-secondary-foreground">{row.division}</span></div></div>;
+}
+
 function Transactions({ rows }: { rows: DashboardData["recentTransactions"] }) {
   if (rows.length === 0) return <p className="px-6 pb-8 pt-3 text-center text-xs text-muted-foreground">No hay transacciones para mostrar.</p>;
 
@@ -264,33 +271,24 @@ function Transactions({ rows }: { rows: DashboardData["recentTransactions"] }) {
         <span>Desliza para ver más →</span>
       </div>
       <div className="scrollbar-subtle overflow-x-auto overscroll-x-contain rounded-xl border border-border sm:rounded-none sm:border-0" tabIndex={0} aria-label="Tabla de transacciones recientes; desplázate horizontalmente para ver todas las columnas">
-        <table className="w-full min-w-[780px] table-fixed text-left text-[11px]">
+        <table className="w-full min-w-[560px] table-fixed text-left text-[11px]">
           <thead>
             <tr className="border-b border-border bg-muted/40 text-[9px] font-bold uppercase tracking-[0.12em] text-muted-foreground sm:bg-transparent">
-              <th className="sticky left-0 z-20 w-[28%] bg-muted px-3 py-3 sm:static sm:bg-transparent sm:px-0 sm:pr-3">Movimiento</th>
-              <th className="w-[13%] px-3 py-3 sm:px-0">Fecha</th>
-              <th className="w-[16%] px-3 py-3 sm:px-0">División</th>
-              <th className="w-[16%] px-3 py-3 sm:px-0">Categoría</th>
-              <th className="w-[14%] px-3 py-3 sm:px-0">Cuenta</th>
-              <th className="w-[13%] px-3 py-3 text-right sm:px-0">Monto</th>
+              <th className="sticky left-0 z-20 w-[34%] bg-muted px-3 py-3 sm:static sm:bg-transparent sm:px-0 sm:pr-3">Movimiento</th>
+              <th className="w-[24%] px-3 py-3 text-right sm:px-0">Monto</th>
+              <th className="w-[19%] px-3 py-3 sm:px-0">Fecha</th>
+              <th className="w-[23%] px-3 py-3 sm:px-0">Cuenta</th>
             </tr>
           </thead>
           <tbody>
             {rows.slice(0, 5).map((row) => (
               <tr key={row.id} className="group border-b border-border/55 last:border-0 hover:bg-muted/25">
                 <td className="sticky left-0 z-10 bg-card px-3 py-3 transition group-hover:bg-muted sm:static sm:px-0 sm:pr-3">
-                  <div className="flex items-center gap-3">
-                    <span className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${row.type === "income" ? "bg-emerald-500/10 text-emerald-600" : "bg-orange-500/10 text-orange-600"}`}>
-                      {row.type === "income" ? <ArrowDownRight className="size-4" aria-hidden="true" /> : <ArrowUpRight className="size-4" aria-hidden="true" />}
-                    </span>
-                    <div className="min-w-0"><p className="truncate font-bold text-card-foreground">{row.description}</p><p className="mt-0.5 text-[9px] text-muted-foreground">{row.type === "income" ? "Ingreso recibido" : "Pago realizado"}</p></div>
-                  </div>
+                  <CompactMovement row={row} />
                 </td>
-                <td className="truncate px-3 py-3 text-muted-foreground sm:px-0">{dateFormatter.format(new Date(`${row.date}T12:00:00`))}</td>
-                <td className="truncate px-3 py-3 sm:px-0"><span className="rounded-full bg-secondary px-2.5 py-1 font-semibold text-secondary-foreground">{row.division}</span></td>
-                <td className="truncate px-3 py-3 sm:px-0"><span className="rounded-full bg-muted px-2.5 py-1 font-semibold text-muted-foreground">{row.category}</span></td>
+                <td className={`truncate px-3 py-3 text-right font-bold tabular-nums sm:px-0 ${row.type === "income" ? "text-emerald-600" : "text-card-foreground"}`}>{row.type === "income" ? "+" : "−"}{money(row.amount)}</td>
+                <td className="truncate px-3 py-3 tabular-nums text-muted-foreground sm:px-0">{formatShortDate(row.date)}</td>
                 <td className="truncate px-3 py-3 text-muted-foreground sm:px-0">{row.account}</td>
-                <td className={`truncate px-3 py-3 text-right font-bold sm:px-0 ${row.type === "income" ? "text-emerald-600" : "text-card-foreground"}`}>{row.type === "income" ? "+" : "−"}{money(row.amount)}</td>
               </tr>
             ))}
           </tbody>
@@ -341,9 +339,9 @@ function DivisionDetailModal({ division, rows, onClose }: { division: DashboardD
             <div className="flex items-end justify-between gap-3"><h3 className="text-xs font-bold text-card-foreground">Movimientos de {division.label}</h3><span className="text-[9px] font-semibold text-muted-foreground sm:hidden">Desliza →</span></div>
             {records.length ? (
               <div className="scrollbar-subtle mt-3 overflow-x-auto overscroll-x-contain rounded-2xl border border-border" tabIndex={0} aria-label={`Movimientos de ${division.label}; desplázate horizontalmente para ver todas las columnas`}>
-                <table className="w-full min-w-[650px] text-left text-[11px]">
-                  <thead><tr className="border-b border-border bg-muted/45 text-[9px] font-bold uppercase tracking-[0.1em] text-muted-foreground"><th className="px-4 py-3">Movimiento</th><th className="px-3 py-3">Fecha</th><th className="px-3 py-3">Categoría</th><th className="px-3 py-3">Cuenta</th><th className="px-4 py-3 text-right">Monto</th></tr></thead>
-                  <tbody>{records.map((row) => <tr key={row.id} className="border-b border-border/60 last:border-0 hover:bg-muted/25"><td className="px-4 py-3 font-bold text-card-foreground">{row.description}</td><td className="whitespace-nowrap px-3 py-3 text-muted-foreground">{dateFormatter.format(new Date(`${row.date}T12:00:00`))}</td><td className="px-3 py-3"><span className="inline-flex rounded-full bg-secondary px-2.5 py-1 font-semibold text-secondary-foreground">{row.category}</span></td><td className="px-3 py-3"><span className="inline-flex rounded-full bg-muted px-2.5 py-1 font-semibold text-muted-foreground">{row.account}</span></td><td className="whitespace-nowrap px-4 py-3 text-right font-bold text-card-foreground">−{money(row.amount)}</td></tr>)}</tbody>
+                <table className="w-full min-w-[560px] table-fixed text-left text-[11px]">
+                  <thead><tr className="border-b border-border bg-muted/45 text-[9px] font-bold uppercase tracking-[0.1em] text-muted-foreground"><th className="w-[34%] px-4 py-3">Movimiento</th><th className="w-[24%] px-3 py-3 text-right">Monto</th><th className="w-[19%] px-3 py-3">Fecha</th><th className="w-[23%] px-3 py-3">Cuenta</th></tr></thead>
+                  <tbody>{records.map((row) => <tr key={row.id} className="border-b border-border/60 last:border-0 hover:bg-muted/25"><td className="px-4 py-3"><CompactMovement row={row} /></td><td className="whitespace-nowrap px-3 py-3 text-right font-bold tabular-nums text-card-foreground">−{money(row.amount)}</td><td className="whitespace-nowrap px-3 py-3 tabular-nums text-muted-foreground">{formatShortDate(row.date)}</td><td className="truncate px-3 py-3 text-muted-foreground">{row.account}</td></tr>)}</tbody>
                 </table>
               </div>
             ) : <p className="mt-3 rounded-2xl border border-border p-6 text-center text-xs text-muted-foreground">No hay registros para esta división.</p>}
@@ -391,10 +389,6 @@ export function DashboardView({ initialData, settings }: { initialData: Dashboar
     <div className={density}>
       <header className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
         <div>
-          <div className="mb-2 flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-secondary px-2.5 py-1 text-[10px] font-bold text-secondary-foreground"><Sparkles className="size-3" aria-hidden="true" />Panorama de {period}</span>
-            <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground"><Clock3 className="size-3" aria-hidden="true" />Actualizado {formatUpdatedAt(data.updatedAt)}</span>
-          </div>
           <h1 className="text-2xl font-semibold tracking-[-0.04em] text-foreground sm:text-3xl">{settings.dashboardTitle}</h1>
           <p className="mt-2 text-xs leading-5 text-muted-foreground">Una lectura clara de tus ingresos, gastos y capacidad de ahorro.</p>
         </div>
@@ -409,6 +403,7 @@ export function DashboardView({ initialData, settings }: { initialData: Dashboar
             <RefreshCw className={`size-4 text-primary ${refreshing ? "animate-spin" : ""}`} aria-hidden="true" />
             <span className="hidden sm:inline">Actualizar</span>
           </button>
+          <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground"><Clock3 className="size-3" aria-hidden="true" />Actualizado {formatUpdatedAt(data.updatedAt)}</span>
         </div>
       </header>
 
