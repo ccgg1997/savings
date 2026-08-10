@@ -3,8 +3,6 @@
 import Link from "next/link";
 import { useId, useState } from "react";
 import {
-  ArrowDownRight,
-  ArrowUpRight,
   CalendarDays,
   ChevronRight,
   Clock3,
@@ -52,52 +50,31 @@ function formatUpdatedAt(value: string) {
   return updatedFormatter.format(new Date(value)).replace(/\s/g, " ");
 }
 
-function percentChange(current: number, previous: number) {
-  return previous ? ((current - previous) / Math.abs(previous)) * 100 : null;
-}
-
-type MetricCardProps = {
+type SummaryMetricProps = {
   label: string;
-  helper: string;
   value: string;
-  delta: number | null;
-  inverse?: boolean;
   icon: typeof Wallet;
-  tone: "emerald" | "orange" | "blue" | "violet";
-  featured?: boolean;
+  tone: "budget" | "income" | "expense" | "balance";
 };
 
-const metricTones = {
-  emerald: "bg-emerald-500/12 text-emerald-600",
-  orange: "bg-orange-500/12 text-orange-600",
-  blue: "bg-blue-500/12 text-blue-600",
-  violet: "bg-violet-500/12 text-violet-600",
+const summaryTones = {
+  budget: "bg-secondary text-secondary-foreground",
+  income: "bg-positive/10 text-positive",
+  expense: "bg-negative/10 text-negative",
+  balance: "bg-primary/10 text-primary",
 };
 
-function MetricCard({ label, helper, value, delta, inverse = false, icon: Icon, tone, featured = false }: MetricCardProps) {
-  const positive = delta !== null && (inverse ? delta <= 0 : delta >= 0);
-  const DeltaIcon = positive ? ArrowUpRight : ArrowDownRight;
-
+function SummaryMetric({ label, value, icon: Icon, tone }: SummaryMetricProps) {
   return (
-    <article className={`group relative overflow-hidden rounded-2xl border p-5 shadow-[0_10px_30px_rgba(25,48,40,0.05)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(25,48,40,0.09)] ${featured ? "border-slate-700 bg-surface-dark text-surface-dark-foreground" : "border-border/90 bg-card text-card-foreground"}`}>
-      {featured ? <div className="pointer-events-none absolute -right-10 -top-12 size-36 rounded-full bg-emerald-400/12 blur-2xl" /> : null}
-      <div className="relative flex items-start justify-between gap-3">
-        <div>
-          <p className={`text-[11px] font-semibold ${featured ? "text-white/48" : "text-muted-foreground"}`}>{label}</p>
-          <p className="mt-2 text-2xl font-semibold tracking-[-0.035em] xl:text-[1.7rem]">{value}</p>
-        </div>
-        <span className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${featured ? "bg-white/10 text-emerald-300" : metricTones[tone]}`}>
-          <Icon className="size-5" aria-hidden="true" />
-        </span>
+    <div className="flex min-w-0 items-center gap-3 border-l border-border/80 px-4 py-3 first:border-l-0 sm:px-5">
+      <span className={`flex size-9 shrink-0 items-center justify-center rounded-xl ${summaryTones[tone]}`}>
+        <Icon className="size-4" aria-hidden="true" />
+      </span>
+      <div className="min-w-0">
+        <p className="truncate text-[10px] font-semibold text-muted-foreground">{label}</p>
+        <p className="mt-0.5 truncate text-base font-bold tracking-tight text-card-foreground sm:text-lg">{value}</p>
       </div>
-      <div className="relative mt-5 flex items-center justify-between gap-2">
-        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-bold ${delta === null ? featured ? "bg-white/8 text-white/45" : "bg-muted text-muted-foreground" : positive ? "bg-emerald-500/12 text-emerald-600" : "bg-red-500/12 text-red-600"}`}>
-          {delta === null ? null : <DeltaIcon className="size-3" aria-hidden="true" />}
-          {delta === null ? "Periodo actual" : `${Math.abs(delta).toFixed(1)}%`}
-        </span>
-        <span className={`truncate text-[9px] ${featured ? "text-white/35" : "text-muted-foreground"}`}>{helper}</span>
-      </div>
-    </article>
+    </div>
   );
 }
 
@@ -238,7 +215,13 @@ function CategoryMosaic({ categories }: { categories: DashboardData["expenseCate
   return (
     <div className="grid gap-3 px-5 pb-5 sm:grid-cols-6 sm:px-6 sm:pb-6">
       {categories.slice(0, 6).map((item, index) => (
-        <article key={item.label} className={`group relative min-h-32 overflow-hidden rounded-2xl p-4 text-white ${spans[index] ?? "sm:col-span-2"}`} style={{ backgroundColor: item.color }}>
+        <Link
+          key={item.label}
+          href={`/movimientos?category=${encodeURIComponent(item.label)}&type=expense`}
+          aria-label={`Ver movimientos de la categoría ${item.label}`}
+          className={`group relative min-h-32 overflow-hidden rounded-2xl p-4 text-white transition hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${spans[index] ?? "sm:col-span-2"}`}
+          style={{ backgroundColor: item.color }}
+        >
           <div className="pointer-events-none absolute -bottom-10 -right-8 size-28 rounded-full bg-white/12 transition-transform duration-500 group-hover:scale-125" />
           <div className="relative flex h-full flex-col justify-between">
             <div className="flex items-start justify-between gap-3">
@@ -250,7 +233,7 @@ function CategoryMosaic({ categories }: { categories: DashboardData["expenseCate
               <p className="mt-1 truncate text-lg font-bold tracking-tight">{money(item.amount)}</p>
             </div>
           </div>
-        </article>
+        </Link>
       ))}
       {categories.length === 0 ? <div className="col-span-full rounded-xl bg-muted p-8 text-center text-xs text-muted-foreground">No hay categorías para mostrar.</div> : null}
     </div>
@@ -376,12 +359,6 @@ export function DashboardView({ initialData, settings }: { initialData: Dashboar
     }
   }
 
-  const current = data.monthlyTrend.at(-1) ?? { income: 0, expenses: 0 };
-  const previous = data.monthlyTrend.at(-2) ?? { income: 0, expenses: 0 };
-  const currentSavings = current.income - current.expenses;
-  const previousSavings = previous.income - previous.expenses;
-  const currentRate = current.income ? (currentSavings / current.income) * 100 : 0;
-  const previousRate = previous.income ? (previousSavings / previous.income) * 100 : 0;
   const density = settings.compactMode ? "space-y-4" : "space-y-6";
   const divisionDetail = data.expenseDivisions.find((item) => item.label === selectedDivision);
 
@@ -407,11 +384,13 @@ export function DashboardView({ initialData, settings }: { initialData: Dashboar
         </div>
       </header>
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Indicadores financieros">
-        <MetricCard label="Ingresos totales" helper="vs. mes anterior" value={compact(data.metrics.totalIncome)} delta={percentChange(current.income, previous.income)} icon={Wallet} tone="emerald" featured />
-        <MetricCard label="Gastos acumulados" helper="vs. mes anterior" value={compact(data.metrics.totalExpenses)} delta={percentChange(current.expenses, previous.expenses)} inverse icon={ReceiptText} tone="orange" />
-        <MetricCard label="Ahorro logrado" helper="balance disponible" value={compact(data.metrics.savings)} delta={percentChange(currentSavings, previousSavings)} icon={PiggyBank} tone="blue" />
-        <MetricCard label="Tasa de ahorro" helper="de tus ingresos" value={`${data.metrics.savingsRate.toFixed(1)}%`} delta={previousRate ? currentRate - previousRate : null} icon={Target} tone="violet" />
+      <section className="scrollbar-subtle overflow-x-auto rounded-2xl border border-border/90 bg-card shadow-[0_8px_24px_rgba(25,48,40,0.04)]" aria-label="Resumen financiero">
+        <div className="grid min-w-[640px] grid-cols-4">
+          <SummaryMetric label="Presupuesto" value={data.budget === null ? "Sin definir" : compact(data.budget)} icon={Target} tone="budget" />
+          <SummaryMetric label="Ingreso total" value={compact(data.metrics.totalIncome)} icon={Wallet} tone="income" />
+          <SummaryMetric label="Gastos totales" value={compact(data.metrics.totalExpenses)} icon={ReceiptText} tone="expense" />
+          <SummaryMetric label="Balance" value={compact(data.metrics.savings)} icon={PiggyBank} tone="balance" />
+        </div>
       </section>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(310px,0.75fr)]">

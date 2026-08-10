@@ -8,10 +8,11 @@ import { recordError } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 
-export default async function MovementsPage({ searchParams }: { searchParams: Promise<{ division?: string }> }) {
+export default async function MovementsPage({ searchParams }: { searchParams: Promise<{ division?: string; category?: string; type?: string }> }) {
   const session = await getCurrentSession();
   if (!session?.user || session.user.status !== "ACTIVE") redirect("/login");
-  const { division } = await searchParams;
+  const { division, category, type } = await searchParams;
+  const initialType = type === "income" || type === "expense" ? type : undefined;
 
   let data: TransactionsData;
   try {
@@ -21,5 +22,5 @@ export default async function MovementsPage({ searchParams }: { searchParams: Pr
     data = { source: "demo", transactions: [], categories: [], divisions: [], updatedAt: new Date().toISOString() };
   }
   const settings = await getAppSettings();
-  return <AppShell session={session} settings={settings}><MovementsView initialData={data} initialDivision={division} /></AppShell>;
+  return <AppShell session={session} settings={settings}><MovementsView initialData={data} initialDivision={division} initialCategory={category} initialType={initialType} /></AppShell>;
 }

@@ -63,11 +63,11 @@ function draftFromTransaction(transaction: TransactionRecord): TransactionDraft 
   return { ...transaction, amount: String(transaction.amount) };
 }
 
-export function MovementsView({ initialData, initialDivision }: { initialData: TransactionsData; initialDivision?: string }) {
+export function MovementsView({ initialData, initialDivision, initialCategory, initialType }: { initialData: TransactionsData; initialDivision?: string; initialCategory?: string; initialType?: TransactionType }) {
   const [transactions, setTransactions] = useState(initialData.transactions);
-  const [category, setCategory] = useState("all");
+  const [category, setCategory] = useState(initialCategory && initialData.categories.includes(initialCategory) ? initialCategory : "all");
   const [division, setDivision] = useState(initialDivision && initialData.divisions.includes(initialDivision) ? initialDivision : "all");
-  const [type, setType] = useState<"all" | TransactionType>("all");
+  const [type, setType] = useState<"all" | TransactionType>(initialType ?? "all");
   const [search, setSearch] = useState("");
   const [month, setMonth] = useState(() => getMonthOptions(initialData.transactions)[0] ?? "all");
   const [editor, setEditor] = useState<EditorState | null>(null);
