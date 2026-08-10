@@ -43,6 +43,14 @@ if (googleConfigured) {
     clientId: process.env.GOOGLE_CLIENT_ID!,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
     allowDangerousEmailAccountLinking: true,
+    profile(profile) {
+      return {
+        id: profile.sub,
+        name: profile.name,
+        email: profile.email.toLowerCase(),
+        image: profile.picture,
+      };
+    },
     authorization: {
       params: process.env.GOOGLE_DEFAULT_EMAIL ? { login_hint: process.env.GOOGLE_DEFAULT_EMAIL } : {},
     },
@@ -78,9 +86,10 @@ export const authOptions: NextAuthOptions = {
     },
   },
   callbacks: {
-    async signIn({ user }) {
+    async signIn({ user, account, profile }) {
       const email = user.email?.trim().toLowerCase();
       if (!email) return false;
+      if (account?.provider === "google" && (profile as { email_verified?: boolean } | undefined)?.email_verified === false) return false;
 
       try {
         const existing = await prisma.user.findUnique({ where: { email }, select: { id: true, role: true, status: true } });
