@@ -15,13 +15,11 @@ import {
   ShieldCheck,
   Target,
   Wallet,
-  X,
 } from "lucide-react";
 import type { DashboardData } from "@/lib/notion";
 import type { AppSettingsData } from "@/lib/settings";
 import { apiFetch } from "@/lib/api";
 import { captureClientError, notifySuccess } from "@/lib/client-errors";
-import { useBodyScrollLock } from "@/lib/use-body-scroll-lock";
 import { TransactionDescriptionPopover } from "@/components/transaction-description-popover";
 
 const currency = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
@@ -95,7 +93,7 @@ function Panel({ title, description, action, children, className = "" }: { title
   );
 }
 
-function ExpenseOverview({ divisions, expenses, income, onSelect }: { divisions: DashboardData["expenseDivisions"]; expenses: number; income: number; onSelect: (division: string) => void }) {
+function ExpenseOverview({ divisions, expenses, income }: { divisions: DashboardData["expenseDivisions"]; expenses: number; income: number }) {
   const spentPercentage = income ? (expenses / income) * 100 : 0;
   const available = income - expenses;
   const availablePercentage = income ? (available / income) * 100 : 0;
@@ -121,7 +119,12 @@ function ExpenseOverview({ divisions, expenses, income, onSelect }: { divisions:
 
       <div className="mt-5 space-y-4">
         {divisions.map((item) => (
-          <button key={item.label} type="button" onClick={() => onSelect(item.label)} className="group block w-full rounded-xl text-left transition hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25">
+          <Link
+            key={item.label}
+            href={`/movimientos?division=${encodeURIComponent(item.label)}&type=expense`}
+            aria-label={`Ver movimientos de la división ${item.label}`}
+            className="group block w-full transform-gpu rounded-xl text-left transition-[transform,background-color] duration-150 ease-out hover:bg-muted/60 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25 motion-reduce:transform-none"
+          >
             <div className="mb-1.5 flex items-center justify-between gap-3 text-[10px]">
               <span className="flex min-w-0 items-center gap-2 font-semibold text-card-foreground">
                 <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: item.color }} />
@@ -132,7 +135,7 @@ function ExpenseOverview({ divisions, expenses, income, onSelect }: { divisions:
             <div className="h-1.5 overflow-hidden rounded-full bg-muted">
               <span className="block h-full rounded-full transition-all" style={{ width: `${Math.min(Math.max(item.percentage, 2), 100)}%`, backgroundColor: item.color }} />
             </div>
-          </button>
+          </Link>
         ))}
         {divisions.length === 0 ? <p className="py-6 text-center text-xs text-muted-foreground">No hay divisiones para mostrar.</p> : null}
       </div>
@@ -196,7 +199,7 @@ function CategoryCarousel({ categories }: { categories: DashboardData["expenseCa
                 key={item.label}
                 href={`/movimientos?category=${encodeURIComponent(item.label)}&type=expense`}
                 aria-label={`Ver movimientos de la categoría ${item.label}`}
-                className="group relative min-h-32 min-w-0 overflow-hidden rounded-2xl p-4 text-white transition hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="group relative min-h-32 min-w-0 transform-gpu overflow-hidden rounded-2xl p-4 text-white transition-[transform,box-shadow] duration-150 ease-out hover:-translate-y-0.5 hover:shadow-lg active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transform-none"
                 style={{ backgroundColor: item.color }}
               >
                 <div className="pointer-events-none absolute -bottom-10 -right-8 size-28 rounded-full bg-white/12 transition-transform duration-500 group-hover:scale-125" />
@@ -275,69 +278,10 @@ function Transactions({ rows }: { rows: DashboardData["recentTransactions"] }) {
   );
 }
 
-function DivisionDetailModal({ division, rows, onClose }: { division: DashboardData["expenseDivisions"][number]; rows: DashboardData["recentTransactions"]; onClose: () => void }) {
-  const records = rows.filter((row) => row.type === "expense" && row.division === division.label);
-  useBodyScrollLock(true);
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-stretch overflow-hidden overscroll-none bg-slate-950/55 backdrop-blur-sm sm:items-center sm:justify-center sm:p-6" role="presentation">
-      <section role="dialog" aria-modal="true" aria-labelledby="division-detail-title" className="flex h-[100dvh] w-full max-w-4xl flex-col overflow-hidden bg-card shadow-2xl sm:h-auto sm:max-h-[92dvh] sm:rounded-3xl sm:border sm:border-border">
-        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border bg-card px-4 py-4 sm:px-6 sm:py-5">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-primary">Detalle por división</p>
-            <h2 id="division-detail-title" className="mt-1 text-xl font-bold tracking-tight text-card-foreground">{division.label}</h2>
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              {records.length} {records.length === 1 ? "registro" : "registros"} · {division.categories.length} {division.categories.length === 1 ? "categoría" : "categorías"}
-            </p>
-          </div>
-          <button type="button" onClick={onClose} className="flex size-10 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30">
-            <X className="size-4" aria-hidden="true" /><span className="sr-only">Cerrar</span>
-          </button>
-        </div>
-
-        <div className="scrollbar-subtle min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain p-4 sm:p-6">
-          <div className="grid gap-3 sm:grid-cols-[1fr_2fr]">
-            <div className="rounded-2xl bg-surface-dark p-4 text-surface-dark-foreground sm:p-5">
-              <p className="text-[10px] font-semibold text-white/45">Total de la división</p>
-              <p className="mt-2 text-2xl font-bold tracking-tight">{money(division.amount)}</p>
-              <p className="mt-3 text-[10px] font-semibold text-emerald-300">{division.percentage.toFixed(1)}% de tus ingresos</p>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              {division.categories.map((category) => (
-                <div key={category.label} className="rounded-xl border border-border bg-background/65 p-3">
-                  <div className="flex items-center justify-between gap-3"><span className="truncate text-[10px] font-bold text-card-foreground">{category.label}</span><span className="rounded-full bg-secondary px-2 py-0.5 text-[9px] font-bold text-secondary-foreground">{Math.round(category.percentage)}%</span></div>
-                  <p className="mt-2 text-sm font-bold text-card-foreground">{money(category.amount)}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <div className="flex items-end justify-between gap-3"><h3 className="text-xs font-bold text-card-foreground">Movimientos de {division.label}</h3><span className="text-[9px] font-semibold text-muted-foreground sm:hidden">Desliza →</span></div>
-            {records.length ? (
-              <div className="scrollbar-subtle mt-3 overflow-x-auto overscroll-x-contain rounded-2xl border border-border" tabIndex={0} aria-label={`Movimientos de ${division.label}; desplázate horizontalmente para ver todas las columnas`}>
-                <table className="w-full min-w-[560px] table-fixed text-left text-[11px]">
-                  <thead><tr className="border-b border-border bg-muted/45 text-[9px] font-bold uppercase tracking-[0.1em] text-muted-foreground"><th className="w-[34%] px-4 py-3">Movimiento</th><th className="w-[24%] px-3 py-3 text-right">Monto</th><th className="w-[19%] px-3 py-3">Fecha</th><th className="w-[23%] px-3 py-3">Cuenta</th></tr></thead>
-                  <tbody>{records.map((row) => <tr key={row.id} className="border-b border-border/60 last:border-0 hover:bg-muted/25"><td className="px-4 py-3"><CompactMovement row={row} /></td><td className="whitespace-nowrap px-3 py-3 text-right font-bold tabular-nums text-card-foreground">−{money(row.amount)}</td><td className="whitespace-nowrap px-3 py-3 tabular-nums text-muted-foreground">{formatShortDate(row.date)}</td><td className="truncate px-3 py-3 text-muted-foreground">{row.account}</td></tr>)}</tbody>
-                </table>
-              </div>
-            ) : <p className="mt-3 rounded-2xl border border-border p-6 text-center text-xs text-muted-foreground">No hay registros para esta división.</p>}
-          </div>
-        </div>
-
-        <div className="shrink-0 border-t border-border bg-card p-4 sm:flex sm:justify-end sm:px-6">
-          <Link href={`/movimientos?division=${encodeURIComponent(division.label)}`} className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-surface-dark px-4 text-xs font-bold text-surface-dark-foreground transition hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-ring/30 sm:w-auto">Abrir movimientos filtrados<Maximize2 className="size-3.5" aria-hidden="true" /></Link>
-        </div>
-      </section>
-    </div>
-  );
-}
-
 export function DashboardView({ initialData, settings }: { initialData: DashboardData; settings: AppSettingsData }) {
   const [data, setData] = useState(initialData);
   const [refreshing, setRefreshing] = useState(false);
   const [period, setPeriod] = useState(initialData.period);
-  const [selectedDivision, setSelectedDivision] = useState<string | null>(null);
 
   async function refresh() {
     setRefreshing(true);
@@ -354,7 +298,6 @@ export function DashboardView({ initialData, settings }: { initialData: Dashboar
   }
 
   const density = settings.compactMode ? "space-y-4" : "space-y-6";
-  const divisionDetail = data.expenseDivisions.find((item) => item.label === selectedDivision);
 
   return (
     <div className={density}>
@@ -388,7 +331,7 @@ export function DashboardView({ initialData, settings }: { initialData: Dashboar
       </section>
 
       <Panel title="Gastos por división" description="Cuánto representa cada división frente a tus ingresos" action={<Layers3 className="size-4 text-primary" aria-hidden="true" />}>
-        <ExpenseOverview divisions={data.expenseDivisions} expenses={data.metrics.totalExpenses} income={data.metrics.totalIncome} onSelect={setSelectedDivision} />
+        <ExpenseOverview divisions={data.expenseDivisions} expenses={data.metrics.totalExpenses} income={data.metrics.totalIncome} />
       </Panel>
 
       <Panel title="Gastos por categoría" description="Dónde se concentra tu dinero este periodo">
@@ -403,8 +346,6 @@ export function DashboardView({ initialData, settings }: { initialData: Dashboar
         <span className="flex items-center gap-1.5"><ShieldCheck className="size-3.5 text-primary" aria-hidden="true" />Información procesada de forma segura en el servidor</span>
         <span>{data.source === "notion" ? "Sincronizado con Notion" : "Vista con datos de demostración"}</span>
       </footer>
-
-      {divisionDetail ? <DivisionDetailModal division={divisionDetail} rows={data.recentTransactions} onClose={() => setSelectedDivision(null)} /> : null}
     </div>
   );
 }

@@ -163,16 +163,14 @@ export function MovementsView({ initialData, initialDivision, initialCategory, i
       <header className="flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
         <div>
           <div className="mb-2 flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-secondary px-2.5 py-1 text-[10px] font-bold text-secondary-foreground"><WalletCards className="size-3" aria-hidden="true" />Centro de movimientos</span>
+          <h1 className="text-2xl font-semibold tracking-[-0.04em] text-foreground sm:text-3xl">Movimientos</h1>
             <span className={`inline-flex items-center gap-1.5 text-[10px] font-semibold ${writable ? "text-emerald-700" : "text-amber-700"}`}><span className={`size-1.5 rounded-full ${writable ? "bg-emerald-500" : "bg-amber-500"}`} />{writable ? "Notion conectado" : "Datos de demostración"}</span>
           </div>
-          <h1 className="text-2xl font-semibold tracking-[-0.04em] text-foreground sm:text-3xl">Movimientos</h1>
-          <p className="mt-2 max-w-2xl text-xs leading-5 text-muted-foreground">Consulta, filtra y administra los ingresos y gastos sincronizados con tus bases de Notion.</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => setManagingOptions(true)} disabled={!writable} className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-card px-4 text-xs font-bold text-foreground shadow-sm transition hover:-translate-y-0.5 hover:bg-muted disabled:pointer-events-none disabled:opacity-45"><Settings2 className="size-4" aria-hidden="true" />Divisiones y categorías</button>
-          <button type="button" onClick={() => setEditor({ mode: "create", type: "income" })} className="inline-flex h-10 items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-xs font-bold text-emerald-700 shadow-sm transition hover:-translate-y-0.5 hover:bg-emerald-100"><ArrowDownLeft className="size-4" aria-hidden="true" />Nuevo ingreso</button>
-          <button type="button" onClick={() => setEditor({ mode: "create", type: "expense" })} className="inline-flex h-10 items-center gap-2 rounded-xl bg-surface-dark px-4 text-xs font-bold text-surface-dark-foreground shadow-lg shadow-slate-950/10 transition hover:-translate-y-0.5 hover:bg-slate-800"><Plus className="size-4" aria-hidden="true" />Nuevo gasto</button>
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+          <button type="button" onClick={() => setManagingOptions(true)} disabled={!writable} className="col-span-2 inline-flex h-10 items-center justify-self-start gap-2 whitespace-nowrap rounded-xl border border-border bg-card px-4 text-xs font-bold text-foreground shadow-sm transition hover:-translate-y-0.5 hover:bg-muted disabled:pointer-events-none disabled:opacity-45 sm:col-auto"><Settings2 className="size-4" aria-hidden="true" />Divisiones y categorías</button>
+          <button type="button" onClick={() => setEditor({ mode: "create", type: "income" })} className="inline-flex h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-xs font-bold text-emerald-700 shadow-sm transition hover:-translate-y-0.5 hover:bg-emerald-100"><ArrowDownLeft className="size-4" aria-hidden="true" />Nuevo ingreso</button>
+          <button type="button" onClick={() => setEditor({ mode: "create", type: "expense" })} className="inline-flex h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-surface-dark px-4 text-xs font-bold text-surface-dark-foreground shadow-lg shadow-slate-950/10 transition hover:-translate-y-0.5 hover:bg-slate-800"><Plus className="size-4" aria-hidden="true" />Nuevo gasto</button>
         </div>
       </header>
 
